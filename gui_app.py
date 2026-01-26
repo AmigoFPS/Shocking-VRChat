@@ -36,7 +36,9 @@ SETTINGS_BASIC_DEFAULT = {
                 '/avatar/parameters/wildcard/*',
             ],
             'mode': 'distance',
-            'strength_limit': 100,
+            'strength_limit': 100,      # Pattern power multiplier (0-100)
+            'device_power_limit': 100,  # Hardware device limit (0-200)
+            'power_settings_enabled': True,
         },
         'channel_b': {
             'avatar_params': [
@@ -46,7 +48,9 @@ SETTINGS_BASIC_DEFAULT = {
                 '/avatar/parameters/TouchAreaD',
             ],
             'mode': 'distance',
-            'strength_limit': 100,
+            'strength_limit': 100,      # Pattern power multiplier (0-100)
+            'device_power_limit': 100,  # Hardware device limit (0-200)
+            'power_settings_enabled': True,
         }
     },
     'version': CONFIG_FILE_VERSION,
@@ -845,6 +849,704 @@ class SystemLogsPanel(tk.Frame):
         gui_logger.info("Logs cleared")
 
 
+
+class TooltipIcon(tk.Canvas):
+    """Modern question mark icon that shows tooltip on hover - Nothing Phone style"""
+    
+    def __init__(self, parent, tooltip_text, fonts=None, bg_color=None):
+        self.bg_color = bg_color or NothingPhoneStyle.BG_SECONDARY
+        super().__init__(parent, width=18, height=18, bg=self.bg_color, highlightthickness=0)
+        self.tooltip_text = tooltip_text
+        self.fonts = fonts or NothingPhoneStyle.get_scaled_fonts()
+        self.tooltip_window = None
+        
+        # Draw circle with question mark
+        self._draw_icon(False)
+        
+        # Bind events
+        self.bind("<Enter>", self._on_enter)
+        self.bind("<Leave>", self._on_leave)
+        self.bind("<Button-1>", self._toggle_tooltip)
+    
+    def _draw_icon(self, hovered=False):
+        self.delete("all")
+        # Circle background
+        fill_color = NothingPhoneStyle.ACCENT_RED if hovered else NothingPhoneStyle.BG_TERTIARY
+        outline_color = NothingPhoneStyle.ACCENT_RED if hovered else NothingPhoneStyle.TEXT_MUTED
+        text_color = NothingPhoneStyle.TEXT_PRIMARY if hovered else NothingPhoneStyle.TEXT_SECONDARY
+        
+        self.create_oval(2, 2, 16, 16, fill=fill_color, outline=outline_color, width=1)
+        self.create_text(9, 9, text="?", font=("Segoe UI", 8, "bold"), fill=text_color)
+        self.configure(cursor="hand2")
+    
+    def _on_enter(self, event=None):
+        self._draw_icon(True)
+        self._show_tooltip()
+    
+    def _on_leave(self, event=None):
+        self._draw_icon(False)
+        self._hide_tooltip()
+    
+    def _show_tooltip(self, event=None):
+        if self.tooltip_window:
+            return
+            
+        x = self.winfo_rootx() + 25
+        y = self.winfo_rooty() - 10
+        
+        self.tooltip_window = tw = tk.Toplevel(self)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f"+{x}+{y}")
+        tw.attributes('-topmost', True)
+        
+        # Tooltip frame with accent border
+        frame = tk.Frame(tw, bg=NothingPhoneStyle.ACCENT_RED, padx=1, pady=1)
+        frame.pack()
+        
+        inner = tk.Frame(frame, bg=NothingPhoneStyle.BG_PRIMARY, padx=12, pady=8)
+        inner.pack()
+        
+        label = tk.Label(inner, text=self.tooltip_text,
+                        font=self.fonts['small'],
+                        bg=NothingPhoneStyle.BG_PRIMARY,
+                        fg=NothingPhoneStyle.TEXT_PRIMARY,
+                        justify=tk.LEFT,
+                        wraplength=280)
+        label.pack()
+    
+    def _hide_tooltip(self, event=None):
+        if self.tooltip_window:
+            self.tooltip_window.destroy()
+            self.tooltip_window = None
+    
+    def _toggle_tooltip(self, event=None):
+        if self.tooltip_window:
+            self._hide_tooltip()
+        else:
+            self._show_tooltip()
+
+
+class ModernToggle(tk.Canvas):
+    """Nothing Phone inspired toggle switch"""
+    def __init__(self, parent, variable, command=None, fonts=None):
+        super().__init__(parent, width=44, height=22, bg=NothingPhoneStyle.BG_SECONDARY, highlightthickness=0)
+        self.variable = variable
+        self.command = command
+        self.fonts = fonts or NothingPhoneStyle.get_scaled_fonts()
+        
+        self.bind("<Button-1>", self._toggle)
+        self._draw()
+        
+    def _draw(self):
+        self.delete("all")
+        is_on = self.variable.get()
+        
+        # Colors
+        bg_color = NothingPhoneStyle.ACCENT_RED if is_on else NothingPhoneStyle.BG_TERTIARY
+        toggle_color = NothingPhoneStyle.TEXT_PRIMARY
+        
+        # Background pill
+        self.create_rounded_rect(2, 2, 42, 20, radius=9, fill=bg_color, outline="")
+        
+        # Circle handle
+        x_pos = 32 if is_on else 12
+        self.create_oval(x_pos-7, 5, x_pos+7, 17, fill=toggle_color, outline="")
+        
+        # Text state (ON/OFF)
+        state_text = "ON" if is_on else "OFF"
+        self.create_text(23, 32, text=state_text, font=self.fonts['small'], 
+                         fill=NothingPhoneStyle.TEXT_SECONDARY)
+        
+        self.configure(cursor="hand2")
+
+    def create_rounded_rect(self, x1, y1, x2, y2, radius=10, **kwargs):
+        points = [x1+radius, y1,
+                  x1+radius, y1,
+                  x2-radius, y1,
+                  x2-radius, y1,
+                  x2, y1,
+                  x2, y1+radius,
+                  x2, y1+radius,
+                  x2, y2-radius,
+                  x2, y2-radius,
+                  x2, y2,
+                  x2-radius, y2,
+                  x2-radius, y2,
+                  x1+radius, y2,
+                  x1+radius, y2,
+                  x1, y2,
+                  x1, y2-radius,
+                  x1, y2-radius,
+                  x1, y1+radius,
+                  x1, y1+radius,
+                  x1, y1]
+        return self.create_polygon(points, **kwargs, smooth=True)
+
+    def _toggle(self, event=None):
+        self.variable.set(not self.variable.get())
+        self._draw()
+        if self.command:
+            self.command()
+
+
+class ConfigSlider(tk.Frame):
+    """Custom styled slider matching Nothing Phone aesthetic"""
+    
+    def __init__(self, parent, label, attr_name, min_val=0, max_val=100, 
+                 initial=50, tooltip=None, fonts=None, on_change=None):
+        super().__init__(parent, bg=NothingPhoneStyle.BG_SECONDARY)
+        self.min_val = min_val
+        self.max_val = max_val
+        self.attr_name = attr_name
+        self.fonts = fonts or NothingPhoneStyle.get_scaled_fonts()
+        self.on_change = on_change
+        self.value = tk.DoubleVar(value=initial)
+        
+        self._create_widgets(label, tooltip)
+    
+    def _create_widgets(self, label, tooltip):
+        # Main row
+        row = tk.Frame(self, bg=NothingPhoneStyle.BG_SECONDARY)
+        row.pack(fill=tk.X, padx=10, pady=6)
+        
+        # Left side: label + tooltip
+        left = tk.Frame(row, bg=NothingPhoneStyle.BG_SECONDARY)
+        left.pack(side=tk.LEFT)
+        
+        lbl = tk.Label(left, text=label, font=self.fonts['body'],
+                      bg=NothingPhoneStyle.BG_SECONDARY,
+                      fg=NothingPhoneStyle.TEXT_SECONDARY,
+                      width=14, anchor=tk.W)
+        lbl.pack(side=tk.LEFT)
+        
+        if tooltip:
+            tip = TooltipIcon(left, tooltip, self.fonts, NothingPhoneStyle.BG_SECONDARY)
+            tip.pack(side=tk.LEFT, padx=(4, 0))
+        
+        # Right side: value display
+        right = tk.Frame(row, bg=NothingPhoneStyle.BG_SECONDARY)
+        right.pack(side=tk.RIGHT)
+        
+        self.value_label = tk.Label(right, text=str(int(self.value.get())),
+                                    font=self.fonts['heading'],
+                                    bg=NothingPhoneStyle.BG_SECONDARY,
+                                    fg=NothingPhoneStyle.ACCENT_RED,
+                                    width=4)
+        self.value_label.pack(side=tk.LEFT)
+        
+        max_lbl = tk.Label(right, text=f"/{self.max_val}",
+                          font=self.fonts['small'],
+                          bg=NothingPhoneStyle.BG_SECONDARY,
+                          fg=NothingPhoneStyle.TEXT_MUTED)
+        max_lbl.pack(side=tk.LEFT)
+        
+        # Slider row
+        slider_row = tk.Frame(self, bg=NothingPhoneStyle.BG_SECONDARY)
+        slider_row.pack(fill=tk.X, padx=10, pady=(0, 8))
+        
+        # Custom canvas slider
+        self.slider_canvas = tk.Canvas(slider_row, height=20,
+                                       bg=NothingPhoneStyle.BG_SECONDARY,
+                                       highlightthickness=0)
+        self.slider_canvas.pack(fill=tk.X, expand=True)
+        self.slider_canvas.bind("<Configure>", self._draw_slider)
+        self.slider_canvas.bind("<Button-1>", self._on_click)
+        self.slider_canvas.bind("<B1-Motion>", self._on_drag)
+    
+    def _draw_slider(self, event=None):
+        self.slider_canvas.delete("all")
+        width = self.slider_canvas.winfo_width()
+        height = self.slider_canvas.winfo_height()
+        
+        if width <= 1:
+            return
+        
+        track_y = height // 2
+        track_height = 4
+        margin = 8
+        track_width = width - 2 * margin
+        
+        # Background track
+        self.slider_canvas.create_rectangle(
+            margin, track_y - track_height//2,
+            width - margin, track_y + track_height//2,
+            fill=NothingPhoneStyle.BG_TERTIARY,
+            outline=""
+        )
+        
+        # Progress calculation
+        progress = (self.value.get() - self.min_val) / (self.max_val - self.min_val)
+        active_width = int(track_width * progress)
+        
+        # Gradient fill
+        if active_width > 0:
+            color = NothingPhoneStyle.get_gradient_color(progress)
+            self.slider_canvas.create_rectangle(
+                margin, track_y - track_height//2,
+                margin + active_width, track_y + track_height//2,
+                fill=color,
+                outline=""
+            )
+            self.value_label.configure(fg=color)
+        
+        # Thumb
+        thumb_x = margin + active_width
+        thumb_radius = 7
+        current_color = NothingPhoneStyle.get_gradient_color(progress)
+        
+        self.slider_canvas.create_oval(
+            thumb_x - thumb_radius, track_y - thumb_radius,
+            thumb_x + thumb_radius, track_y + thumb_radius,
+            fill=NothingPhoneStyle.TEXT_PRIMARY,
+            outline=current_color,
+            width=2
+        )
+    
+    def _on_click(self, event):
+        self._update_from_pos(event.x)
+    
+    def _on_drag(self, event):
+        self._update_from_pos(event.x)
+    
+    def _update_from_pos(self, x):
+        width = self.slider_canvas.winfo_width()
+        margin = 8
+        progress = (x - margin) / (width - 2 * margin)
+        progress = max(0, min(1, progress))
+        value = self.min_val + progress * (self.max_val - self.min_val)
+        self.set_value(value)
+    
+    def set_value(self, value):
+        value = max(self.min_val, min(self.max_val, value))
+        self.value.set(value)
+        self.value_label.configure(text=str(int(value)))
+        self._draw_slider()
+        if self.on_change:
+            self.on_change(self.attr_name, value)
+    
+    def get_value(self):
+        return self.value.get()
+
+
+class ModeSelector(tk.Frame):
+    """Modern mode selector buttons - Nothing Phone style"""
+    
+    def __init__(self, parent, modes, variable, tooltip=None, fonts=None, on_change=None):
+        super().__init__(parent, bg=NothingPhoneStyle.BG_SECONDARY)
+        self.modes = modes
+        self.variable = variable
+        self.fonts = fonts or NothingPhoneStyle.get_scaled_fonts()
+        self.on_change = on_change
+        self.buttons = {}
+        
+        self._create_widgets(tooltip)
+    
+    def _create_widgets(self, tooltip):
+        # Header row
+        header = tk.Frame(self, bg=NothingPhoneStyle.BG_SECONDARY)
+        header.pack(fill=tk.X, padx=10, pady=(8, 5))
+        
+        lbl = tk.Label(header, text="MODE", font=self.fonts['small'],
+                      bg=NothingPhoneStyle.BG_SECONDARY,
+                      fg=NothingPhoneStyle.TEXT_MUTED)
+        lbl.pack(side=tk.LEFT)
+        
+        if tooltip:
+            tip = TooltipIcon(header, tooltip, self.fonts, NothingPhoneStyle.BG_SECONDARY)
+            tip.pack(side=tk.LEFT, padx=(6, 0))
+        
+        # Buttons row
+        btn_frame = tk.Frame(self, bg=NothingPhoneStyle.BG_SECONDARY)
+        btn_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
+        
+        for text, val in self.modes:
+            btn = tk.Button(btn_frame, text=text,
+                           font=self.fonts['small'],
+                           bg=NothingPhoneStyle.BG_TERTIARY,
+                           fg=NothingPhoneStyle.TEXT_SECONDARY,
+                           activebackground=NothingPhoneStyle.ACCENT_RED,
+                           activeforeground=NothingPhoneStyle.TEXT_PRIMARY,
+                           bd=0, padx=12, pady=6,
+                           cursor="hand2",
+                           command=lambda v=val: self._select(v))
+            btn.pack(side=tk.LEFT, padx=(0, 4), expand=True, fill=tk.X)
+            self.buttons[val] = btn
+        
+        # Initial selection
+        self._update_buttons()
+    
+    def _select(self, value):
+        self.variable.set(value)
+        self._update_buttons()
+        if self.on_change:
+            self.on_change(value)
+    
+    def _update_buttons(self):
+        current = self.variable.get()
+        for val, btn in self.buttons.items():
+            if val == current:
+                btn.configure(bg=NothingPhoneStyle.ACCENT_RED,
+                            fg=NothingPhoneStyle.TEXT_PRIMARY)
+            else:
+                btn.configure(bg=NothingPhoneStyle.BG_TERTIARY,
+                            fg=NothingPhoneStyle.TEXT_SECONDARY)
+    
+    def refresh(self):
+        self._update_buttons()
+
+
+class PatternsPanel(tk.Frame):
+    """Configuration panel for behavioral patterns - Nothing Phone style"""
+    
+    # Tooltip texts for each setting
+    TOOLTIPS = {
+        'device_power': "⚡ DEVICE POWER LIMIT\n\nHardware limit for DG-Lab device (0-200).\nLimits the maximum possible strength at the hardware level.\n\nRecommended: Start with 30-50 for safety.",
+        'pattern_power': "📊 PATTERN MULTIPLIER\n\nSoftware pattern multiplier (0-100%).\nScales the intensity of the generated wave.\n\n100% means the pattern will use full available power defined by the device limit.",
+        'mode': "🎮 OPERATION MODE\n\n• PROXIMITY — strength depends on distance to contact\n• IMPACT — strength depends on movement speed\n• RECOIL — strength depends on acceleration (jerk)",
+        'sensitivity': "🎚️ SENSITIVITY\n\nDefines how strong the reaction is to input changes.\nHigher = stronger reaction to small changes.\n\nFor PROXIMITY: how fast the strength ramps up.\nFor IMPACT/RECOIL: speed/acceleration threshold.",
+        'threshold': "🚫 ACTIVATION THRESHOLD\n\nMinimum value required to trigger a shock.\nFilters out accidental or weak signals.\n\nIncrease this if you experience false triggers.",
+        'power_enabled': "🔌 POWER SETTINGS TOGGLE\n\nEnable or disable custom power management for this channel.\nIf disabled, default device behavior will be used.",
+    }
+    
+    def __init__(self, parent, fonts=None, on_save_callback=None):
+        super().__init__(parent, bg=NothingPhoneStyle.BG_PRIMARY)
+        self.fonts = fonts or NothingPhoneStyle.get_scaled_fonts()
+        self.on_save_callback = on_save_callback
+        self.settings = None
+        self.sliders = {}
+        self.mode_selectors = {}
+        self.power_vars = {}
+        self._create_widgets()
+    
+    def _create_widgets(self):
+        # Create canvas and scrollbar for scrolling
+        self.canvas = tk.Canvas(self, bg=NothingPhoneStyle.BG_PRIMARY, highlightthickness=0)
+        self.scrollbar = ModernScrollbar(self, orient=tk.VERTICAL, command=self.canvas.yview,
+                                       bg=NothingPhoneStyle.BG_PRIMARY,
+                                       trough_color=NothingPhoneStyle.BG_PRIMARY,
+                                       thumb_color=NothingPhoneStyle.BORDER_COLOR,
+                                       active_color=NothingPhoneStyle.ACCENT_RED,
+                                       width=10)
+        
+        self.scroll_frame = tk.Frame(self.canvas, bg=NothingPhoneStyle.BG_PRIMARY)
+        self.scroll_frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        )
+        
+        self.canvas_window = self.canvas.create_window((0, 0), window=self.scroll_frame, anchor="nw")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        
+        # Pack
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Bind mouse wheel
+        self.canvas.bind("<MouseWheel>", self._on_mousewheel)
+        self.scroll_frame.bind("<MouseWheel>", self._on_mousewheel)
+        self.bind("<Configure>", self._on_frame_configure)
+
+        # Content - Channel cards
+        self._create_channel_card(self.scroll_frame, "CHANNEL A", "channel_a", NothingPhoneStyle.ACCENT_RED)
+        self._create_channel_card(self.scroll_frame, "CHANNEL B", "channel_b", NothingPhoneStyle.ACCENT_ORANGE)
+
+    def _on_mousewheel(self, event):
+        self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+
+    def _on_frame_configure(self, event):
+        # Update canvas window width
+        self.canvas.itemconfig(self.canvas_window, width=event.width - 15)
+        
+    def _create_channel_card(self, parent, title, channel_key, accent_color):
+        """Create a styled channel configuration card"""
+        # Card container
+        card = tk.Frame(parent, bg=NothingPhoneStyle.BG_SECONDARY)
+        card.pack(fill=tk.X, padx=8, pady=8)
+        setattr(self, f"{channel_key}_card", card)
+        
+        # Card header with dot accent
+        header = tk.Frame(card, bg=NothingPhoneStyle.BG_SECONDARY)
+        header.pack(fill=tk.X, padx=12, pady=(12, 8))
+        
+        # Accent dot
+        dot = tk.Canvas(header, width=12, height=12, bg=NothingPhoneStyle.BG_SECONDARY, highlightthickness=0)
+        dot.pack(side=tk.LEFT, padx=(0, 10))
+        dot.create_oval(2, 2, 10, 10, fill=accent_color, outline="")
+        
+        # Title
+        lbl = tk.Label(header, text=title, font=self.fonts['heading'],
+                      bg=NothingPhoneStyle.BG_SECONDARY,
+                      fg=NothingPhoneStyle.TEXT_PRIMARY)
+        lbl.pack(side=tk.LEFT)
+        
+        # Power settings toggle
+        power_var = tk.BooleanVar(value=True)
+        self.power_vars[channel_key] = power_var
+        
+        # Container for switch and label
+        toggle_frame = tk.Frame(header, bg=NothingPhoneStyle.BG_SECONDARY)
+        toggle_frame.pack(side=tk.RIGHT)
+        
+        status_lbl = tk.Label(toggle_frame, text="ENABLED", font=self.fonts['small'],
+                             bg=NothingPhoneStyle.BG_SECONDARY,
+                             fg=NothingPhoneStyle.ACCENT_RED)
+        status_lbl.pack(side=tk.LEFT, padx=(0, 8))
+        setattr(self, f"{channel_key}_status_lbl", status_lbl)
+        
+        def on_toggle():
+            is_enabled = power_var.get()
+            status_lbl.configure(
+                text="ENABLED" if is_enabled else "DISABLED",
+                fg=NothingPhoneStyle.ACCENT_RED if is_enabled else NothingPhoneStyle.TEXT_MUTED
+            )
+            # Update visual state of sliders
+            self._update_card_visual_state(channel_key)
+            # Auto-save if needed or let the user click save
+            
+        toggle_btn = ModernToggle(toggle_frame, variable=power_var, 
+                                 command=on_toggle, fonts=self.fonts)
+        toggle_btn.pack(side=tk.LEFT)
+        setattr(self, f"{channel_key}_toggle", toggle_btn)
+        
+        tip = TooltipIcon(header, self.TOOLTIPS['power_enabled'], self.fonts, NothingPhoneStyle.BG_SECONDARY)
+        tip.pack(side=tk.RIGHT, padx=15)
+        
+        # Body frame (contains everything below header)
+        body = tk.Frame(card, bg=NothingPhoneStyle.BG_SECONDARY)
+        body.pack(fill=tk.X)
+        setattr(self, f"{channel_key}_body", body)
+        
+        # Separator
+        sep = tk.Frame(body, height=1, bg=NothingPhoneStyle.BORDER_COLOR)
+        sep.pack(fill=tk.X, padx=12, pady=(0, 8))
+        
+        # Power section header
+        power_header = tk.Frame(body, bg=NothingPhoneStyle.BG_SECONDARY)
+        power_header.pack(fill=tk.X, padx=12)
+        
+        tk.Label(power_header, text="⚡ POWER SETTINGS", font=self.fonts['small'],
+                bg=NothingPhoneStyle.BG_SECONDARY,
+                fg=NothingPhoneStyle.TEXT_MUTED).pack(side=tk.LEFT)
+        
+        # Device Power slider (0-200)
+        device_slider = ConfigSlider(body, "Device Limit", f"{channel_key}_device_power",
+                                     min_val=0, max_val=200, initial=100,
+                                     tooltip=self.TOOLTIPS['device_power'],
+                                     fonts=self.fonts)
+        device_slider.pack(fill=tk.X)
+        self.sliders[f"{channel_key}_device_power"] = device_slider
+        
+        # Pattern Power slider (0-100)
+        pattern_slider = ConfigSlider(body, "Pattern Multi", f"{channel_key}_pattern_power",
+                                      min_val=0, max_val=100, initial=100,
+                                      tooltip=self.TOOLTIPS['pattern_power'],
+                                      fonts=self.fonts)
+        pattern_slider.pack(fill=tk.X)
+        self.sliders[f"{channel_key}_pattern_power"] = pattern_slider
+        
+        # Separator
+        sep2 = tk.Frame(body, height=1, bg=NothingPhoneStyle.BORDER_COLOR)
+        sep2.pack(fill=tk.X, padx=12, pady=8)
+        
+        # Mode selector
+        mode_var = tk.StringVar(value="distance")
+        setattr(self, f"{channel_key}_mode", mode_var)
+        
+        modes = [
+            ("PROXIMITY", "distance"),
+            ("IMPACT", "touch_1"),
+            ("RECOIL", "touch_2"),
+        ]
+        
+        mode_selector = ModeSelector(body, modes, mode_var,
+                                     tooltip=self.TOOLTIPS['mode'],
+                                     fonts=self.fonts)
+        mode_selector.pack(fill=tk.X)
+        self.mode_selectors[channel_key] = mode_selector
+        
+        # Behavior section header
+        behavior_header = tk.Frame(body, bg=NothingPhoneStyle.BG_SECONDARY)
+        behavior_header.pack(fill=tk.X, padx=12, pady=(5, 0))
+        
+        tk.Label(behavior_header, text="🎚️ BEHAVIOR TUNING", font=self.fonts['small'],
+                bg=NothingPhoneStyle.BG_SECONDARY,
+                fg=NothingPhoneStyle.TEXT_MUTED).pack(side=tk.LEFT)
+        
+        # Sensitivity slider
+        sens_slider = ConfigSlider(body, "Sensitivity", f"{channel_key}_sens",
+                                   min_val=0, max_val=100, initial=50,
+                                   tooltip=self.TOOLTIPS['sensitivity'],
+                                   fonts=self.fonts)
+        sens_slider.pack(fill=tk.X)
+        self.sliders[f"{channel_key}_sens"] = sens_slider
+        
+        # Threshold slider  
+        thresh_slider = ConfigSlider(body, "Threshold", f"{channel_key}_thresh",
+                                     min_val=0, max_val=100, initial=0,
+                                     tooltip=self.TOOLTIPS['threshold'],
+                                     fonts=self.fonts)
+        thresh_slider.pack(fill=tk.X)
+        self.sliders[f"{channel_key}_thresh"] = thresh_slider
+        
+        # Bottom padding
+        tk.Frame(body, bg=NothingPhoneStyle.BG_SECONDARY, height=8).pack(fill=tk.X)
+
+    def _update_card_visual_state(self, channel_key):
+        """Update opacity/visual state of channel card based on toggle"""
+        is_enabled = self.power_vars[channel_key].get()
+        body = getattr(self, f"{channel_key}_body")
+        
+        # There's no real opacity in tkinter, so we simulate by changing colors
+        # or just dimming the contents. For now, let's just update the status label.
+        status_lbl = getattr(self, f"{channel_key}_status_lbl")
+        status_lbl.configure(
+            text="ENABLED" if is_enabled else "DISABLED",
+            fg=NothingPhoneStyle.ACCENT_RED if is_enabled else NothingPhoneStyle.TEXT_MUTED
+        )
+        
+        # We can disable all children of the body
+        def set_state(parent, state):
+            for child in parent.winfo_children():
+                try:
+                    if 'state' in child.config():
+                        child.configure(state=state)
+                except:
+                    pass
+                set_state(child, state)
+        
+        # set_state(body, tk.NORMAL if is_enabled else tk.DISABLED)
+
+
+    def load_settings(self, settings):
+        self.settings = settings
+        # Parse settings into UI
+        # We need to map from the complex json to simple sliders
+        
+        for ch in ['channel_a', 'channel_b']:
+            try:
+                ch_conf = settings['dglab3'][ch]
+                mode = ch_conf.get('mode', 'distance')
+                
+                # Default UI state
+                ui_mode = "distance"
+                sens = 50.0
+                thresh = 0.0
+                
+                # Load power enabled toggle
+                power_enabled = ch_conf.get('power_settings_enabled', True)
+                if ch in self.power_vars:
+                    self.power_vars[ch].set(power_enabled)
+                
+                # Load device power (hardware limit, 0-200)
+                device_power = ch_conf.get('device_power_limit', 100)
+                if f"{ch}_device_power" in self.sliders:
+                    self.sliders[f"{ch}_device_power"].set_value(device_power)
+                
+                # Load pattern power (software multiplier, 0-100)
+                pattern_power = ch_conf.get('strength_limit', 100)
+                if f"{ch}_pattern_power" in self.sliders:
+                    self.sliders[f"{ch}_pattern_power"].set_value(pattern_power)
+                
+                if mode == 'distance':
+                    ui_mode = "distance"
+                elif mode == 'touch':
+                    conf = ch_conf.get('mode_config', {}).get('touch', {})
+                    deriv = conf.get('n_derivative', 1)
+                    if deriv == 1:
+                        ui_mode = "touch_1"
+                    else:
+                        ui_mode = "touch_2"
+                        
+                    # Calculate sensitivity from derivative params
+                    d_params_list = conf.get('derivative_params', [])
+                    if len(d_params_list) > deriv:
+                        d_params = d_params_list[deriv]
+                        top = d_params.get('top', 10)
+                        bottom = d_params.get('bottom', 0)
+                        
+                        sens = max(0, min(100, 100 - top))
+                        thresh = bottom * 100
+                
+                # Set mode
+                getattr(self, f"{ch}_mode").set(ui_mode)
+                if ch in self.mode_selectors:
+                    self.mode_selectors[ch].refresh()
+                
+                # Update visual state based on loaded power toggle
+                self._update_card_visual_state(ch)
+                if hasattr(self, f"{ch}_toggle"):
+                    getattr(self, f"{ch}_toggle")._draw()
+                
+                # Set sliders
+                if f"{ch}_sens" in self.sliders:
+                    self.sliders[f"{ch}_sens"].set_value(sens)
+                if f"{ch}_thresh" in self.sliders:
+                    self.sliders[f"{ch}_thresh"].set_value(thresh)
+                
+            except Exception:
+                pass
+
+    def apply_settings(self):
+        """Write UI values back to settings dict"""
+        if not self.settings: return None
+        
+        for ch in ['channel_a', 'channel_b']:
+            ui_mode = getattr(self, f"{ch}_mode").get()
+            
+            # Get values from sliders
+            sens = self.sliders[f"{ch}_sens"].get_value() if f"{ch}_sens" in self.sliders else 50
+            thresh = self.sliders[f"{ch}_thresh"].get_value() if f"{ch}_thresh" in self.sliders else 0
+            device_power = int(self.sliders[f"{ch}_device_power"].get_value()) if f"{ch}_device_power" in self.sliders else 100
+            pattern_power = int(self.sliders[f"{ch}_pattern_power"].get_value()) if f"{ch}_pattern_power" in self.sliders else 100
+            power_enabled = self.power_vars[ch].get() if ch in self.power_vars else True
+            
+            ch_conf = self.settings['dglab3'][ch]
+            
+            # Save power settings
+            ch_conf['power_settings_enabled'] = power_enabled
+            ch_conf['device_power_limit'] = device_power  # Hardware limit (0-200)
+            ch_conf['strength_limit'] = pattern_power     # Pattern multiplier (0-100)
+            
+            if ui_mode == "distance":
+                ch_conf['mode'] = 'distance'
+            elif ui_mode.startswith("touch"):
+                ch_conf['mode'] = 'touch'
+                n_deriv = 1 if ui_mode == "touch_1" else 2
+                
+                # Update touch config
+                if 'mode_config' not in ch_conf: ch_conf['mode_config'] = {}
+                if 'touch' not in ch_conf['mode_config']:
+                    ch_conf['mode_config']['touch'] = {
+                        'freq_ms': 10,
+                        'n_derivative': n_deriv,
+                        'derivative_params': [
+                            {"top": 1, "bottom": 0},
+                            {"top": 5, "bottom": 0},
+                            {"top": 50, "bottom": 0},
+                            {"top": 500, "bottom": 0},
+                        ]
+                    }
+                
+                touch_conf = ch_conf['mode_config']['touch']
+                touch_conf['n_derivative'] = n_deriv
+                
+                # Map sensitivity back to 'top'
+                top = max(0.1, 100 - sens)
+                if n_deriv == 1:
+                     top = top / 2 
+                
+                bottom = thresh / 100.0
+                
+                # Update the specific param index
+                touch_conf['derivative_params'][n_deriv]['top'] = top
+                touch_conf['derivative_params'][n_deriv]['bottom'] = bottom
+
+        return self.settings
+
+    def _on_mode_change(self, channel):
+        pass
+
+
 class ConfigEditor(tk.Frame):
     """Configuration editor with save button"""
     
@@ -898,7 +1600,17 @@ class ConfigEditor(tk.Frame):
                                       bd=0, width=10,
                                       cursor="hand2",
                                       command=lambda: self._switch_file("advanced"))
-        self.btn_advanced.pack(side=tk.LEFT)
+        self.btn_advanced.pack(side=tk.LEFT, padx=(0, 3))
+
+        self.btn_patterns = tk.Button(selector, text="PATTERNS",
+                                      font=self.fonts['small'],
+                                      bg=NothingPhoneStyle.BG_TERTIARY,
+                                      fg=NothingPhoneStyle.TEXT_SECONDARY,
+                                      activebackground=NothingPhoneStyle.ACCENT_RED,
+                                      bd=0, width=10,
+                                      cursor="hand2",
+                                      command=lambda: self._switch_file("patterns"))
+        self.btn_patterns.pack(side=tk.LEFT)
         
         # Right side - action buttons
         actions = tk.Frame(toolbar, bg=NothingPhoneStyle.BG_SECONDARY)
@@ -966,6 +1678,10 @@ class ConfigEditor(tk.Frame):
         self.text_editor.configure(yscrollcommand=v_scroll.set,
                                    xscrollcommand=h_scroll.set)
         self.text_editor.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Patterns Panel (Hidden by default)
+        self.patterns_panel = PatternsPanel(editor_frame, fonts=self.fonts)
+        # We don't pack it yet, we switch visibility
         
         # Status bar
         self.status_bar = tk.Label(self, text="Ready",
@@ -978,21 +1694,50 @@ class ConfigEditor(tk.Frame):
     def _switch_file(self, file_type):
         self.current_file = file_type
         if file_type == "basic":
-            self.btn_basic.configure(bg=NothingPhoneStyle.ACCENT_RED,
-                                     fg=NothingPhoneStyle.TEXT_PRIMARY)
-            self.btn_advanced.configure(bg=NothingPhoneStyle.BG_TERTIARY,
-                                        fg=NothingPhoneStyle.TEXT_SECONDARY)
-        else:
-            self.btn_advanced.configure(bg=NothingPhoneStyle.ACCENT_RED,
-                                        fg=NothingPhoneStyle.TEXT_PRIMARY)
-            self.btn_basic.configure(bg=NothingPhoneStyle.BG_TERTIARY,
-                                     fg=NothingPhoneStyle.TEXT_SECONDARY)
+            self.btn_basic.configure(bg=NothingPhoneStyle.ACCENT_RED, fg=NothingPhoneStyle.TEXT_PRIMARY)
+            self.btn_advanced.configure(bg=NothingPhoneStyle.BG_TERTIARY, fg=NothingPhoneStyle.TEXT_SECONDARY)
+            self.btn_patterns.configure(bg=NothingPhoneStyle.BG_TERTIARY, fg=NothingPhoneStyle.TEXT_SECONDARY)
+            self._show_editor()
+        elif file_type == "advanced":
+            self.btn_advanced.configure(bg=NothingPhoneStyle.ACCENT_RED, fg=NothingPhoneStyle.TEXT_PRIMARY)
+            self.btn_basic.configure(bg=NothingPhoneStyle.BG_TERTIARY, fg=NothingPhoneStyle.TEXT_SECONDARY)
+            self.btn_patterns.configure(bg=NothingPhoneStyle.BG_TERTIARY, fg=NothingPhoneStyle.TEXT_SECONDARY)
+            self._show_editor()
+        else: # patterns
+            self.btn_patterns.configure(bg=NothingPhoneStyle.ACCENT_RED, fg=NothingPhoneStyle.TEXT_PRIMARY)
+            self.btn_basic.configure(bg=NothingPhoneStyle.BG_TERTIARY, fg=NothingPhoneStyle.TEXT_SECONDARY)
+            self.btn_advanced.configure(bg=NothingPhoneStyle.BG_TERTIARY, fg=NothingPhoneStyle.TEXT_SECONDARY)
+            self._show_patterns()
+            
         self._reload_config()
     
+    def _show_editor(self):
+        self.patterns_panel.pack_forget()
+        self.text_editor.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        # Re-pack scrollbars if needed or assume they stay
+        
+    def _show_patterns(self):
+        self.text_editor.pack_forget()
+        self.patterns_panel.pack(fill=tk.BOTH, expand=True)
+        # Trigger load in panel
+        # We need to parse current advanced config
+        try:
+            # We load the advanced config file from disk to ensure we have latest
+            if os.path.exists(CONFIG_FILENAME):
+                with open(CONFIG_FILENAME, 'r', encoding='utf-8') as f:
+                    settings = yaml.safe_load(f)
+                self.patterns_panel.load_settings(settings)
+        except:
+            pass
+
     def _get_current_filename(self):
         return CONFIG_FILENAME_BASIC if self.current_file == "basic" else CONFIG_FILENAME
     
     def _reload_config(self):
+        if self.current_file == "patterns":
+            self.status_bar.configure(text="Visual Pattern Editor", fg=NothingPhoneStyle.TEXT_SECONDARY)
+            return
+
         filename = self._get_current_filename()
         try:
             if os.path.exists(filename):
@@ -1029,6 +1774,25 @@ class ConfigEditor(tk.Frame):
         if not self._validate_config():
             return
         
+        if self.current_file == "patterns":
+            # Save from visual editor
+            new_settings = self.patterns_panel.apply_settings()
+            if new_settings:
+                # Save to advanced file
+                filename = CONFIG_FILENAME
+                try:
+                    with open(filename, 'w', encoding='utf-8') as f:
+                        yaml.safe_dump(new_settings, f, allow_unicode=True, default_flow_style=False)
+                    
+                    self.status_bar.configure(text=f"✓ Patterns Saved", fg=NothingPhoneStyle.LOG_SUCCESS)
+                    gui_logger.success(f"Patterns saved to {filename}")
+                    
+                    if self.on_save_callback:
+                        self.on_save_callback("advanced", new_settings)
+                except Exception as e:
+                    gui_logger.error(f"Save error: {e}")
+            return
+
         filename = self._get_current_filename()
         try:
             content = self.text_editor.get('1.0', tk.END)
@@ -1114,6 +1878,9 @@ class ServerManager:
                 self.settings['dglab3'][chann]['avatar_params'] = self.settings_basic['dglab3'][chann]['avatar_params']
                 self.settings['dglab3'][chann]['mode'] = self.settings_basic['dglab3'][chann]['mode']
                 self.settings['dglab3'][chann]['strength_limit'] = self.settings_basic['dglab3'][chann]['strength_limit']
+                # Ensure device_power_limit is set (fallback to strength_limit for backwards compatibility)
+                if 'device_power_limit' not in self.settings['dglab3'][chann]:
+                    self.settings['dglab3'][chann]['device_power_limit'] = self.settings_basic['dglab3'][chann].get('device_power_limit', 100)
             
             for chann in ['A', 'B']:
                 config_chann_name = f'channel_{chann.lower()}'
@@ -1191,14 +1958,7 @@ class ServerManager:
                     conn.strength_limit[channel.upper()] = value
                     
                     # Force update strength to match the slider (Master Volume behavior)
-                    # The user requested "minimal possible power" be sent to ensure "it changes correctly".
-                    # We always set the strength to the new value.
-                    
                     target_strength = value
-                    if target_strength > 0:
-                        # Ensure we are at least sending something if the slider is not 0
-                        # But honestly, `set_strength(value)` essentially does this.
-                        pass
                         
                     self.on_log.info(f"Updating Channel {channel} strength to {target_strength}")
                     await conn.set_strength(channel.upper(), value=target_strength)
@@ -1208,6 +1968,33 @@ class ServerManager:
                 
         if self.loop and self.loop.is_running():
             asyncio.run_coroutine_threadsafe(_update_connections(), self.loop)
+    
+    def update_device_power_limit(self, channel, value, enabled=True):
+        """Update device power limit for a channel (from PATTERNS config)"""
+        if not self.running:
+            return
+            
+        channel_key = f"channel_{channel.lower()}"
+        if 'dglab3' in self.settings and channel_key in self.settings['dglab3']:
+            self.settings['dglab3'][channel_key]['device_power_limit'] = value
+            self.settings['dglab3'][channel_key]['power_settings_enabled'] = enabled
+            
+        async def _update_device_limits():
+            try:
+                import srv
+                if not hasattr(srv, 'WS_CONNECTIONS'):
+                    return
+                
+                # Update the strength_limit on all connections (this is the hardware limit)
+                for conn in srv.WS_CONNECTIONS:
+                    conn.strength_limit[channel.upper()] = value
+                    self.on_log.info(f"Channel {channel} device power limit set to {value} (Enabled: {enabled})")
+                        
+            except Exception as e:
+                self.on_log.error(f"Failed to update device limit: {str(e)}")
+                
+        if self.loop and self.loop.is_running():
+            asyncio.run_coroutine_threadsafe(_update_device_limits(), self.loop)
     
     def send_test_shock(self, channel):
         """Send a short test shock to the specified channel"""
@@ -1521,8 +2308,26 @@ class ShockingVRChatGUI(tk.Tk):
             except:
                 pass
         else:
+            # Advanced or Patterns config saved
             self.settings = config_data
             self._update_qr()
+            
+            # Sync power settings with running server
+            if self.server_manager and self.server_manager.running:
+                try:
+                    # Update server's settings reference
+                    self.server_manager.settings = config_data
+                    
+                    # Update device power limits on all connections
+                    for ch in ['A', 'B']:
+                        ch_key = f'channel_{ch.lower()}'
+                        device_limit = config_data.get('dglab3', {}).get(ch_key, {}).get('device_power_limit', 100)
+                        power_enabled = config_data.get('dglab3', {}).get(ch_key, {}).get('power_settings_enabled', True)
+                        self.server_manager.update_device_power_limit(ch, device_limit, power_enabled)
+                    
+                    gui_logger.success("Power settings synced with server")
+                except Exception as e:
+                    gui_logger.error(f"Failed to sync settings: {e}")
     
     def _start_server(self):
         """Start the integrated server"""

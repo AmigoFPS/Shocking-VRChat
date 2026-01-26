@@ -38,8 +38,12 @@ class DGConnection():
         self.SETTINGS = SETTINGS
         self.master_uuid = SETTINGS['ws']['master_uuid']
 
-        limit_a = SETTINGS['dglab3']['channel_a']['strength_limit']
-        limit_b = SETTINGS['dglab3']['channel_b']['strength_limit']
+        # Use device_power_limit as the hardware limit (0-200)
+        # Falls back to strength_limit for backwards compatibility
+        limit_a = SETTINGS['dglab3']['channel_a'].get('device_power_limit', 
+                  SETTINGS['dglab3']['channel_a'].get('strength_limit', 100))
+        limit_b = SETTINGS['dglab3']['channel_b'].get('device_power_limit',
+                  SETTINGS['dglab3']['channel_b'].get('strength_limit', 100))
 
         self.strength       = {'A':0, 'B':0}
         self.strength_max   = {'A':0, 'B':0}
@@ -160,3 +164,21 @@ class DGConnection():
         for conn in WS_CONNECTIONS:
             conn : cls
             await conn.set_strength_0_to_1(channel=channel, value=value)
+    
+    @classmethod
+    async def broadcast_strength(cls, channel='A', value=0):
+        """Broadcast absolute strength value (0-200) to all connected devices"""
+        for conn in WS_CONNECTIONS:
+            conn : cls
+            # Use mode '2' for absolute set, respect device max
+            actual_value = min(value, conn.strength_max.get(channel, 200))
+            if conn.strength.get(channel, 0) != actual_value:
+                await conn.set_strength(channel=channel, mode='2', value=actual_value, force=True)
+    
+    @classmethod
+    def update_all_strength_limits(cls, channel='A', new_limit=100):
+        """Update strength limit on all connected devices (call from GUI)"""
+        for conn in WS_CONNECTIONS:
+            conn : cls
+            conn.strength_limit[channel] = new_limit
+            logger.info(f'ID {conn.uuid}, Channel {channel} limit updated to {new_limit}')

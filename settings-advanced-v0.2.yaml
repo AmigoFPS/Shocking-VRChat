@@ -1,6 +1,8 @@
 SERVER_IP: null
 dglab3:
   channel_a:
+    device_power_limit: 100
+    mode: distance
     mode_config:
       distance:
         freq_ms: 10
@@ -11,8 +13,8 @@ dglab3:
         derivative_params:
         - bottom: 0
           top: 1
-        - bottom: 0
-          top: 5
+        - bottom: 0.20347826086956522
+          top: 5.5625
         - bottom: 0
           top: 50
         - bottom: 0
@@ -22,7 +24,11 @@ dglab3:
       trigger_range:
         bottom: 0.0
         top: 1.0
+    power_settings_enabled: false
+    strength_limit: 100
   channel_b:
+    device_power_limit: 0
+    mode: distance
     mode_config:
       distance:
         freq_ms: 10
@@ -44,6 +50,8 @@ dglab3:
       trigger_range:
         bottom: 0.0
         top: 1.0
+    power_settings_enabled: false
+    strength_limit: 0
 general:
   auto_open_qr_web_page: true
   local_ip_detect:
