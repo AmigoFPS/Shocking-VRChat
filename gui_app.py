@@ -1190,13 +1190,18 @@ class ServerManager:
                     # Update limit on connection
                     conn.strength_limit[channel.upper()] = value
                     
-                    # If current strength exceeds new limit, clamp it
-                    current = conn.strength.get(channel.upper(), 0)
-                    limit = conn.get_upper_strength(channel.upper())
+                    # Force update strength to match the slider (Master Volume behavior)
+                    # The user requested "minimal possible power" be sent to ensure "it changes correctly".
+                    # We always set the strength to the new value.
                     
-                    if current > limit:
-                        self.on_log.info(f"Clamping Channel {channel} strength from {current} to {limit}")
-                        await conn.set_strength(channel.upper(), value=limit)
+                    target_strength = value
+                    if target_strength > 0:
+                        # Ensure we are at least sending something if the slider is not 0
+                        # But honestly, `set_strength(value)` essentially does this.
+                        pass
+                        
+                    self.on_log.info(f"Updating Channel {channel} strength to {target_strength}")
+                    await conn.set_strength(channel.upper(), value=target_strength)
                         
             except Exception as e:
                 self.on_log.error(f"Failed to update connections: {str(e)}")
