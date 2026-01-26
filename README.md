@@ -61,8 +61,8 @@ The project features a modern **GUI** inspired by the "Nothing Phone" design lan
    - Ensure your avatar has the standard VRChat Contact Receivers or parameters set up.
    - The application listens on port **9001** for OSC messages by default.
    - Default monitored parameters include:
-     - `/avatar/parameters/Shock/TouchAreaA` (Triggers Channel A)
-     - `/avatar/parameters/Shock/TouchAreaB` (Triggers Channel B)
+     - `/avatar/parameters/TouchAreaA` (Triggers Channel A)
+     - `/avatar/parameters/TouchAreaB` (Triggers Channel B)
 
 ## Configuration
 
