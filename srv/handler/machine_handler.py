@@ -24,19 +24,16 @@ class TuyaHandler(BaseHandler):
         self.is_cleared       = True
     
     def start_background_jobs(self):
-        # logger.info(f"Channel: {self.channel}, background job started.")
         asyncio.ensure_future(self.clear_check())
         if self.mode == 'level':
             asyncio.ensure_future(self.distance_background_wave_feeder())
 
 
     async def clear_check(self):
-        # logger.info(f'Channel {self.channel} started clear check.')
         sleep_time = 0.05
         while 1:
             await asyncio.sleep(sleep_time)
             current_time = time.time()
-            # logger.debug(f"{str(self.is_cleared)}, {current_time}, {self.to_clear_time}")
             if not self.is_cleared and current_time > self.to_clear_time:
                 self.is_cleared = True
                 self.level_current = 1
@@ -78,4 +75,3 @@ class TuyaHandler(BaseHandler):
             logger.success(f'Machine Tuya, strength {current_strength:.3f}, Setting level {current_level}')
             last_level = current_level
             await self.DEV_CONN.set_level(current_level)
-    

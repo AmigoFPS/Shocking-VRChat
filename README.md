@@ -54,6 +54,13 @@ If you prefer running from source or want to contribute:
    python gui_app.py
    ```
 
+4. **Build EXE:**
+   If you want to create your own executable:
+   ```bash
+   python build_exe.py
+   ```
+   The resulting file will be in the `dist/` directory.
+
 ## ❓ Troubleshooting
 
 <<<<<<< HEAD

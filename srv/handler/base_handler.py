@@ -20,6 +20,5 @@ class BaseHandler():
         return param
 
     def osc_handler(self, address, *args):
-        # logger.debug(f"VRCOSC: CHANN {self.channel}: {address}: {args}")
         val = self.param_sanitizer(args)
         return asyncio.ensure_future(self._handler(val))

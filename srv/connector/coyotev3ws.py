@@ -3,7 +3,7 @@ from loguru import logger
 import websockets
 from websockets.legacy.protocol import WebSocketCommonProtocol
 
-from srv import WS_CONNECTIONS, DEFAULT_WAVE #, WS_CONNECTIONS_ID_REVERSE, WS_BINDS
+from srv import WS_CONNECTIONS, DEFAULT_WAVE
 
 class DGWSMessage():
     HEARTBEAT = json.dumps({'type': 'heartbeat', 'clientId': '', 'targetId': '', 'message': '200'})
@@ -38,8 +38,6 @@ class DGConnection():
         self.SETTINGS = SETTINGS
         self.master_uuid = SETTINGS['ws']['master_uuid']
 
-        # Use device_power_limit as the hardware limit (0-200)
-        # Falls back to strength_limit for backwards compatibility
         limit_a = SETTINGS['dglab3']['channel_a'].get('device_power_limit', 
                   SETTINGS['dglab3']['channel_a'].get('strength_limit', 100))
         limit_b = SETTINGS['dglab3']['channel_b'].get('device_power_limit',
@@ -50,21 +48,17 @@ class DGConnection():
         self.strength_limit = {'A':limit_a, 'B':limit_b}
 
         WS_CONNECTIONS.add(self)
-        # WS_CONNECTIONS_ID_REVERSE[self.uuid] = self
     
     def __str__(self):
         return f"<DGConnection (id:{self.uuid}, {self.strength}, max {self.strength_max})>"
     
     async def msg_handler(self, msg: DGWSMessage):
         if msg.type == 'bind':
-            # APP send bind request
-            # WS_BINDS[self] = WS_CONNECTIONS_ID_REVERSE[msg.targetId] 
             assert msg.targetId == self.uuid, "UUID mismatch."
             assert msg.clientId == self.master_uuid, "Binding to unknown uuid."
             ret = DGWSMessage('bind', clientId=msg.clientId, targetId=msg.targetId, message='200')
             await ret.send(self)
         elif msg.type == 'msg':
-            # 跟随强度变化
             if msg.message.startswith('strength-'):
                 self.strength['A'], self.strength['B'], self.strength_max['A'], self.strength_max['B'] = map(int, msg.message[len('strength-'):].split('+'))
                 for chann in ['A', 'B']:
@@ -167,17 +161,14 @@ class DGConnection():
     
     @classmethod
     async def broadcast_strength(cls, channel='A', value=0):
-        """Broadcast absolute strength value (0-200) to all connected devices"""
         for conn in WS_CONNECTIONS:
             conn : cls
-            # Use mode '2' for absolute set, respect device max
             actual_value = min(value, conn.strength_max.get(channel, 200))
             if conn.strength.get(channel, 0) != actual_value:
                 await conn.set_strength(channel=channel, mode='2', value=actual_value, force=True)
     
     @classmethod
     def update_all_strength_limits(cls, channel='A', new_limit=100):
-        """Update strength limit on all connected devices (call from GUI)"""
         for conn in WS_CONNECTIONS:
             conn : cls
             conn.strength_limit[channel] = new_limit

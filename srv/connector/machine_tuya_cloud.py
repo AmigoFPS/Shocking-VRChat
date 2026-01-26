@@ -53,20 +53,10 @@ class TuYaConnection():
 
     async def set_level(self, level:int=1):
         if level == 0:
-            # await self.sendcmd('level', f"level_{level}")
-            # self.current_level = 1
-            # self.set_switch(False)
-            # self.current_level = 0
             level = 1
-        # else:
-            # if self.current_level == 0 :
-            #     self.set_switch(True)
 
         await self.sendcmd('level', f"level_{level}")
         self.current_level = level
 
     async def set_mode(self, mode:str='A'):
         await self.sendcmd('mode', f"level_{mode}")
-    
-
-        

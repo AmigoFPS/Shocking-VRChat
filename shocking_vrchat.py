@@ -65,7 +65,7 @@ SETTINGS = {
                 },
                 'touch': {
                     'freq_ms': 10,
-                    'n_derivative': 1, # 0 for distance, 1 for velocity, 2 for acceleration, 3 for jerk
+                    'n_derivative': 1,
                     'derivative_params': [
                         {
                             "top": 1,
@@ -196,11 +196,6 @@ def handle_Exception(e):
         "error": str(e)
     } , 500
 
-# Disallow (Video)
-# User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.72 Safari/537.36\r\n
-# User-Agent: NSPlayer/12.00.26100.2314 WMFSDK/12.00.26100.2314\r\n
-# Allow (Text/Image)
-# User-Agent: UnityPlayer/2022.3.22f1-DWR (UnityWebRequest/1.0, libcurl/8.5.0-DEV)\r\n
 def allow_vrchat_only(func):
     async def wrapper(*args, **kwargs):
         ua = request.headers.get('User-Agent')
@@ -217,7 +212,7 @@ async def api_v1_status():
         'healthy': 'ok',
         'devices': [
             *[{"type": 'shock', 'device':'coyotev3', 'attr': {'strength':conn.strength, 'uuid':conn.uuid}} for conn in srv.WS_CONNECTIONS],
-            *[{"type": 'machine', 'device':'tuya', 'attr': {}} for conn in []], # TODO
+            *[{"type": 'machine', 'device':'tuya', 'attr': {}} for conn in []],
         ]
     }
 
@@ -246,13 +241,6 @@ async def api_v1_shock(channel, second):
 @app.route('/api/v1/sendwave/<channel>/<repeat>/<wavedata>', endpoint='api_v1_sendwave')
 @allow_vrchat_only
 async def api_v1_sendwave(channel, repeat, wavedata):
-    """API V1 Sendwave.
-
-    Keyword arguments:
-    channel -- A or B.
-    repeat -- repeat times, 1 for 100ms, 1 to 80. Max 80 for json length limit.
-    wavedata -- Coyote v3 wave format, eg. 0A0A0A0A64646464.
-    """
     try:
         channel = channel.upper()
         if channel not in ['A', 'B']:
@@ -296,7 +284,6 @@ def get_config():
 
 @app.route('/api/v1/config', methods=['POST'])
 def update_config():
-    # TODO: Hot apply settings
     err = {
         'success': False,
         'message': "Some error",
@@ -318,7 +305,6 @@ async def async_main():
         server = AsyncIOOSCUDPServer((SETTINGS["osc"]["listen_host"], SETTINGS["osc"]["listen_port"]), dispatcher, asyncio.get_event_loop())
         logger.success(f'OSC Listening: {SETTINGS["osc"]["listen_host"]}:{SETTINGS["osc"]["listen_port"]}')
         transport, protocol = await server.create_serve_endpoint()
-        # await wsserve(wshandler, "127.0.0.1", 8765)
     except Exception as e:
         logger.error(traceback.format_exc())
         logger.error("OSC UDP Recevier listen failed.")
@@ -326,7 +312,7 @@ async def async_main():
         return
     try: 
         async with wsserve(wshandler, SETTINGS['ws']["listen_host"], SETTINGS['ws']["listen_port"]):
-            await asyncio.Future()  # run forever
+            await asyncio.Future()
     except Exception as e:
         logger.error(traceback.format_exc())
         logger.error("Websocket server listen failed.")
@@ -336,7 +322,6 @@ async def async_main():
     transport.close()
 
 def async_main_wrapper():
-    """Not async Wrapper around async_main to run it as target function of Thread"""
     asyncio.run(async_main())
 
 def config_save():
