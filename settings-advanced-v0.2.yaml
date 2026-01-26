@@ -1,0 +1,63 @@
+SERVER_IP: null
+dglab3:
+  channel_a:
+    mode_config:
+      distance:
+        freq_ms: 10
+      shock:
+        duration: 2
+        wave: '["0A0A0A0A64646464","0A0A0A0A64646464","0A0A0A0A64646464","0A0A0A0A64646464","0A0A0A0A64646464","0A0A0A0A64646464","0A0A0A0A64646464","0A0A0A0A64646464","0A0A0A0A64646464","0A0A0A0A64646464"]'
+      touch:
+        derivative_params:
+        - bottom: 0
+          top: 1
+        - bottom: 0
+          top: 5
+        - bottom: 0
+          top: 50
+        - bottom: 0
+          top: 500
+        freq_ms: 10
+        n_derivative: 1
+      trigger_range:
+        bottom: 0.0
+        top: 1.0
+  channel_b:
+    mode_config:
+      distance:
+        freq_ms: 10
+      shock:
+        duration: 2
+        wave: '["0A0A0A0A64646464","0A0A0A0A64646464","0A0A0A0A64646464","0A0A0A0A64646464","0A0A0A0A64646464","0A0A0A0A64646464","0A0A0A0A64646464","0A0A0A0A64646464","0A0A0A0A64646464","0A0A0A0A64646464"]'
+      touch:
+        derivative_params:
+        - bottom: 0
+          top: 1
+        - bottom: 0
+          top: 5
+        - bottom: 0
+          top: 50
+        - bottom: 0
+          top: 500
+        freq_ms: 10
+        n_derivative: 1
+      trigger_range:
+        bottom: 0.0
+        top: 1.0
+general:
+  auto_open_qr_web_page: true
+  local_ip_detect:
+    host: 223.5.5.5
+    port: 80
+log_level: INFO
+osc:
+  listen_host: 127.0.0.1
+  listen_port: 9001
+version: v0.2
+web_server:
+  listen_host: 127.0.0.1
+  listen_port: 8800
+ws:
+  listen_host: 0.0.0.0
+  listen_port: 28846
+  master_uuid: adbdc4b6-183c-4521-865f-5b1deb769de6
