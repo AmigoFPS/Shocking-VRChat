@@ -47,7 +47,7 @@ class ShockHandler(BaseHandler):
     def osc_handler(self, address, *args):
         logger.debug(f"VRCOSC: CHANN {self.channel}: {address}: {args}")
         val = self.param_sanitizer(args)
-        return asyncio.ensure_future(self._handler(val))
+        asyncio.ensure_future(self._handler(val))
 
     async def clear_check(self):
         # logger.info(f'Channel {self.channel} started clear check.')

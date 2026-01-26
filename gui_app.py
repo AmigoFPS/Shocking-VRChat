@@ -31,9 +31,9 @@ SETTINGS_BASIC_DEFAULT = {
         'channel_a': {
             'avatar_params': [
                 '/avatar/parameters/pcs/contact/enterPass',
-                '/avatar/parameters/Shock/TouchAreaA',
-                '/avatar/parameters/Shock/TouchAreaC',
-                '/avatar/parameters/Shock/wildcard/*',
+                '/avatar/parameters/TouchAreaA',
+                '/avatar/parameters/TouchAreaB',
+                '/avatar/parameters/wildcard/*',
             ],
             'mode': 'distance',
             'strength_limit': 100,
@@ -42,8 +42,8 @@ SETTINGS_BASIC_DEFAULT = {
             'avatar_params': [
                 '/avatar/parameters/pcs/contact/enterPass',
                 '/avatar/parameters/lms-penis-proximityA*',
-                '/avatar/parameters/Shock/TouchAreaB',
-                '/avatar/parameters/Shock/TouchAreaC',
+                '/avatar/parameters/TouchAreaC',
+                '/avatar/parameters/TouchAreaD',
             ],
             'mode': 'distance',
             'strength_limit': 100,
