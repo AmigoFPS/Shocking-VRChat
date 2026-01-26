@@ -1169,6 +1169,41 @@ class ServerManager:
         finally:
             self.running = False
     
+    def update_strength_limit(self, channel, value):
+        """Update strength limit for a channel in real-time"""
+        if not self.running:
+            return
+            
+        # Update internal settings
+        channel_key = f"channel_{channel.lower()}"
+        if 'dglab3' in self.settings and channel_key in self.settings['dglab3']:
+            self.settings['dglab3'][channel_key]['strength_limit'] = value
+            
+        # Update active connections
+        async def _update_connections():
+            try:
+                import srv
+                if not hasattr(srv, 'WS_CONNECTIONS'):
+                    return
+                    
+                for conn in srv.WS_CONNECTIONS:
+                    # Update limit on connection
+                    conn.strength_limit[channel.upper()] = value
+                    
+                    # If current strength exceeds new limit, clamp it
+                    current = conn.strength.get(channel.upper(), 0)
+                    limit = conn.get_upper_strength(channel.upper())
+                    
+                    if current > limit:
+                        self.on_log.info(f"Clamping Channel {channel} strength from {current} to {limit}")
+                        await conn.set_strength(channel.upper(), value=limit)
+                        
+            except Exception as e:
+                self.on_log.error(f"Failed to update connections: {str(e)}")
+                
+        if self.loop and self.loop.is_running():
+            asyncio.run_coroutine_threadsafe(_update_connections(), self.loop)
+    
     def send_test_shock(self, channel):
         """Send a short test shock to the specified channel"""
         if not self.running or not self.loop or not self.dg_connection:
@@ -1461,6 +1496,7 @@ class ShockingVRChatGUI(tk.Tk):
             # Update running server if available
             if self.server_manager:
                 self.server_manager.settings_basic = self.settings_basic
+                self.server_manager.update_strength_limit(channel, value)
                 
             gui_logger.info(f"Channel {channel} strength: {value}")
         except Exception as e:

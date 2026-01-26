@@ -4,11 +4,11 @@ dglab3:
     - /avatar/parameters/Shock/TouchAreaA
     - /avatar/parameters/Shock/TouchAreaB
     mode: distance
-    strength_limit: 38
+    strength_limit: 9
   channel_b:
     avatar_params:
     - /avatar/parameters/Shock/TouchAreaC
     - /avatar/parameters/Shock/TouchAreaD
     mode: distance
-    strength_limit: 38
+    strength_limit: 21
 version: v0.2
