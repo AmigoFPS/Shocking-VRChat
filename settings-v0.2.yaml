@@ -1,0 +1,28 @@
+dglab3:
+  channel_a:
+    avatar_params:
+    - /avatar/parameters/TouchAreaA
+    - /avatar/parameters/TouchAreaB
+    device_limit: 73
+    impact_boost: 0
+    impact_boost_max: 36
+    impact_boost_min: 5
+    mode: touch
+    n_derivative: 1
+    recoil_boost: 100
+    sensitivity: 200
+    strength_limit: 73
+    threshold: 10
+  channel_b:
+    avatar_params:
+    - /avatar/parameters/TouchAreaC
+    - /avatar/parameters/TouchAreaD
+    device_limit: 35
+    impact_boost: 0
+    mode: distance
+    n_derivative: 0
+    recoil_boost: 100
+    sensitivity: 200
+    strength_limit: 35
+    threshold: 0
+version: v0.2
