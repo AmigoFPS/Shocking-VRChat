@@ -1,9 +1,18 @@
-import json, uuid, traceback, asyncio
+import json, uuid, traceback, asyncio, time
 from loguru import logger
 import websockets
 from websockets.legacy.protocol import WebSocketCommonProtocol
 
 from srv import WS_CONNECTIONS, DEFAULT_WAVE #, WS_CONNECTIONS_ID_REVERSE, WS_BINDS
+
+# Global state for keep-alive heartbeat
+LAST_ACTIVITY_TIME = {'A': 0, 'B': 0}
+KEEPALIVE_POWER = 1
+KEEPALIVE_INTERVAL = 10
+KEEPALIVE_WAVE = '["0101010101010101"]'
+
+WAKEUP_POWER = 1
+WAKEUP_WAVE = '["0101010101010101"]'
 
 class DGWSMessage():
     HEARTBEAT = json.dumps({'type': 'heartbeat', 'clientId': '', 'targetId': '', 'message': '200'})
@@ -85,6 +94,9 @@ class DGConnection():
             if value > int(limit) and mode == '2':
                 logger.warning(f'ID {self.uuid}, set_strength, {value} is over the limit {limit}, setting to {limit}.')
                 value = limit
+            # Update activity time only for real usage (not forced keep-alive)
+            if value > KEEPALIVE_POWER:
+                LAST_ACTIVITY_TIME[channel] = time.time()
         if mode == '2':
             self.strength[channel] = value
         logger.info(f"Channel {channel}, set strength, mode {mode}, value {value}.")
@@ -108,6 +120,8 @@ class DGConnection():
         await self.set_strength(channel=channel, mode='2', value=strength)
 
     async def send_wave(self, channel='A', wavestr=DEFAULT_WAVE):
+        # Update activity time to prevent keep-alive during active usage
+        LAST_ACTIVITY_TIME[channel] = time.time()
         msg = DGWSMessage('msg', self.master_uuid, self.uuid, f"pulse-{channel}:{wavestr}")
         await msg.send(self)
     
@@ -125,6 +139,28 @@ class DGConnection():
             logger.info(f'ID {self.uuid}, Sending HB.')
             await self.ws_conn.send(DGWSMessage.HEARTBEAT)
     
+    async def device_keepalive(self):
+        """Send periodic low-power pulse to prevent device from sleeping when idle"""
+        while 1:
+            await asyncio.sleep(KEEPALIVE_INTERVAL)
+            current_time = time.time()
+            
+            for channel in ['A', 'B']:
+                # Check if channel has been idle long enough
+                last_activity = LAST_ACTIVITY_TIME.get(channel, 0)
+                idle_time = current_time - last_activity
+                
+                if idle_time >= KEEPALIVE_INTERVAL:
+                    # Send very low power keep-alive signal
+                    try:
+                        # Set minimal strength (1 out of 200)
+                        await self.set_strength(channel, mode='2', value=KEEPALIVE_POWER, force=True)
+                        # Send minimal wave pattern
+                        await self.send_wave(channel, wavestr=KEEPALIVE_WAVE)
+                        logger.debug(f'ID {self.uuid}, Channel {channel} keep-alive pulse sent')
+                    except Exception as e:
+                        logger.debug(f'Keep-alive failed: {e}')
+    
     async def connection_init(self):
         await asyncio.sleep(2)
         await self.set_strength('A', value=1, force=True)
@@ -137,6 +173,7 @@ class DGConnection():
         asyncio.create_task(self.connection_init())
         try:
             hb = asyncio.ensure_future(self.heartbeat())
+            keepalive = asyncio.ensure_future(self.device_keepalive())
             async for message in self.ws_conn:
                 logger.debug(f'WSID {self.uuid}, RECVMSG {message}.')
                 event = json.loads(message)
@@ -150,6 +187,7 @@ class DGConnection():
         finally:
             logger.warning(f'ID {self.uuid} CLOSED.')
             hb.cancel()
+            keepalive.cancel()
             WS_CONNECTIONS.remove(self)
 
     @classmethod
@@ -176,3 +214,21 @@ class DGConnection():
         for conn in WS_CONNECTIONS:
             conn : cls
             await conn.set_strength_with_limit(channel=channel, value_0_to_1=value_0_to_1, device_limit=device_limit)
+    
+    async def send_wakeup_pulse(self, channel='A'):
+        """Send a small pulse to wake up the device when power level changes"""
+        try:
+            # Set wake-up strength
+            await self.set_strength(channel, mode='2', value=WAKEUP_POWER, force=True)
+            # Send short wave pattern
+            await self.send_wave(channel, wavestr=WAKEUP_WAVE)
+            logger.info(f'ID {self.uuid}, Channel {channel} wake-up pulse sent')
+        except Exception as e:
+            logger.warning(f'Wake-up pulse failed: {e}')
+    
+    @classmethod
+    async def broadcast_wakeup_pulse(cls, channel='A'):
+        """Send wake-up pulse to all connected devices"""
+        for conn in WS_CONNECTIONS:
+            conn : cls
+            await conn.send_wakeup_pulse(channel=channel)

@@ -1762,6 +1762,21 @@ class ServerManager:
         # Schedule the coroutine on the server's event loop
         if self.loop and self.loop.is_running():
             asyncio.run_coroutine_threadsafe(do_shock(), self.loop)
+    
+    def send_wakeup_pulse(self, channel):
+        """Send a small wake-up pulse when power level changes"""
+        if not self.running or not self.loop or not self.dg_connection:
+            return
+        
+        async def do_wakeup():
+            try:
+                await self.dg_connection.broadcast_wakeup_pulse(channel=channel.upper())
+                self.on_log.info(f"Wake-up pulse sent to Channel {channel}")
+            except Exception as e:
+                self.on_log.error(f"Wake-up pulse failed: {str(e)}")
+        
+        if self.loop and self.loop.is_running():
+            asyncio.run_coroutine_threadsafe(do_wakeup(), self.loop)
 
 
 class ShockingVRChatGUI(tk.Tk):
@@ -1952,9 +1967,49 @@ class ShockingVRChatGUI(tk.Tk):
         content = tk.Frame(main_container, bg=NothingPhoneStyle.BG_PRIMARY)
         content.pack(fill=tk.BOTH, expand=True)
         
-        # Left column - Controls & Config
-        left_column = tk.Frame(content, bg=NothingPhoneStyle.BG_PRIMARY)
-        left_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 8))
+        # Left column - Controls & Config (with scroll)
+        left_column_outer = tk.Frame(content, bg=NothingPhoneStyle.BG_PRIMARY)
+        left_column_outer.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 8))
+        
+        # Create scrollable container
+        self.left_canvas = tk.Canvas(left_column_outer, bg=NothingPhoneStyle.BG_PRIMARY, 
+                                     highlightthickness=0)
+        left_scrollbar = ModernScrollbar(left_column_outer, orient=tk.VERTICAL,
+                                        command=self.left_canvas.yview,
+                                        bg=NothingPhoneStyle.BG_PRIMARY,
+                                        trough_color=NothingPhoneStyle.BG_PRIMARY,
+                                        thumb_color=NothingPhoneStyle.BG_TERTIARY,
+                                        active_color=NothingPhoneStyle.ACCENT_RED,
+                                        width=10)
+        
+        left_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.left_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.left_canvas.configure(yscrollcommand=left_scrollbar.set)
+        
+        # Inner frame for content
+        left_column = tk.Frame(self.left_canvas, bg=NothingPhoneStyle.BG_PRIMARY)
+        self.left_canvas_window = self.left_canvas.create_window((0, 0), window=left_column, anchor='nw')
+        
+        # Bind scroll events
+        def _on_left_canvas_configure(event):
+            self.left_canvas.configure(scrollregion=self.left_canvas.bbox("all"))
+            # Match inner frame width to canvas width
+            self.left_canvas.itemconfig(self.left_canvas_window, width=event.width)
+        
+        self.left_canvas.bind('<Configure>', _on_left_canvas_configure)
+        
+        # Bind mouse wheel for scrolling
+        def _on_mousewheel(event):
+            self.left_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        
+        def _bind_mousewheel(event):
+            self.left_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        
+        def _unbind_mousewheel(event):
+            self.left_canvas.unbind_all("<MouseWheel>")
+        
+        left_column.bind('<Enter>', _bind_mousewheel)
+        left_column.bind('<Leave>', _unbind_mousewheel)
         
         # Power controls card
         power_card = tk.Frame(left_column, bg=NothingPhoneStyle.BG_SECONDARY)
@@ -2070,6 +2125,8 @@ class ShockingVRChatGUI(tk.Tk):
             if self.server_manager:
                 self.server_manager.settings_basic = self.settings_basic
                 self.server_manager.update_strength_limit(channel, value)
+                # Send wake-up pulse to keep device active
+                self.server_manager.send_wakeup_pulse(channel)
                 
             gui_logger.info(f"Channel {channel} device limit: {value}")
         except Exception as e:
@@ -2128,6 +2185,9 @@ class ShockingVRChatGUI(tk.Tk):
                 else:
                     self.slider_b.value.set(value)
                     self.slider_b._draw_slider()
+                # Send wake-up pulse
+                if self.server_manager:
+                    self.server_manager.send_wakeup_pulse(channel)
             
             # Update runtime settings for real-time effect
             self._update_runtime_setting(channel, setting_name, value)
