@@ -68,8 +68,8 @@ class ShockHandler(BaseHandler):
         asyncio.ensure_future(self.unified_background_wave_feeder())
 
     def osc_handler(self, address, *args):
-        logger.debug(f"VRCOSC: CHANN {self.channel}: {address}: {args}")
         val = self.param_sanitizer(args)
+        logger.info(f"OSC ← Channel {self.channel}: {address} = {val:.4f}")
         asyncio.ensure_future(self._handler(val))
 
     async def clear_check(self):
@@ -133,6 +133,7 @@ class ShockHandler(BaseHandler):
         if out_distance > 0:
             t = time.time()
             self.touch_dist_arr.append([t, out_distance])
+            logger.info(f"Channel {self.channel} input: distance={distance:.4f} → normalized={out_distance:.4f}")
 
     async def handler_distance(self, distance):
         await self.set_clear_after(0.5)
@@ -198,14 +199,22 @@ class ShockHandler(BaseHandler):
             if is_impact and boost_max > 0 and current_boost < boost_max * 0.8:
                 # Impact detected! Apply random boost
                 random_boost = random.randint(boost_min, boost_max)
+                old_boost = int(current_boost)
                 current_boost = min(boost_max, current_boost + random_boost)
-                logger.warning(f'Channel {self.channel} ⚡ IMPACT! Boost now +{int(current_boost)}')
+                logger.warning(
+                    f'Channel {self.channel} ⚡ IMPACT DETECTED! '
+                    f'Boost {old_boost}→{int(current_boost)} (+{random_boost}) '
+                    f'[increase={strength_increase:.3f}, raw={raw_strength:.3f}]'
+                )
             
             # Time-based decay: decay over boost_decay_time seconds
             if current_boost > 0:
+                old_boost = current_boost
                 # Calculate how much to decay based on elapsed time
                 decay_amount = (boost_max / boost_decay_time) * time_delta
                 current_boost = max(0, current_boost - decay_amount)
+                if int(old_boost) != int(current_boost) and int(current_boost) % 5 == 0:
+                    logger.info(f'Channel {self.channel} Boost decay: {int(old_boost)}→{int(current_boost)} (-{decay_amount:.1f})')
             
             last_raw_strength = raw_strength
             
@@ -246,14 +255,21 @@ class ShockHandler(BaseHandler):
                     value_0_to_1=current_strength, 
                     device_limit=effective_limit
                 )
+                logger.info(f'Channel {self.channel} ⚡ Set device strength → {device_power}/{effective_limit} '
+                           f'(raw={raw_strength:.3f}, sens={sensitivity:.1f}x, thresh={threshold:.0%})')
                 last_device_power = device_power
             
-            # Log with pattern info
-            boost_str = f' +{int(current_boost)}' if current_boost > 0 else ''
-            logger.success(f'Channel {self.channel} [{pattern}], raw {raw_strength:.3f} -> power {device_power}/{effective_limit}{boost_str}')
+            # Detailed power output log
+            boost_str = f' BOOST+{int(current_boost)}' if current_boost > 0 else ''
+            logger.success(
+                f'Channel {self.channel} [{pattern}] '
+                f'raw:{raw_strength:.3f} → scaled:{scaled_strength:.3f} → out:{current_strength:.3f} '
+                f'→ power:{device_power}/{effective_limit}{boost_str}'
+            )
             
             last_strength = current_strength
             await self.DG_CONN.broadcast_wave(self.channel, wavestr=wave)
+            logger.info(f'Channel {self.channel} 🔊 Wave sent: {last_strength:.3f}→{current_strength:.3f}')
 
     async def distance_background_wave_feeder(self):
         tick_time_window = self.bg_wave_update_time_window / 20

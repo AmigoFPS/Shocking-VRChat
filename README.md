@@ -1,22 +1,25 @@
 # Shocking-VRChat
 
-Shocking-VRChat is a Python application designed to bridge VRChat with **DG-Lab 3** shock collars (Coyote 3). It detects interactions in VRChat via **OSC** and triggers haptic feedback (shocks/vibrations) on the collar through a local network connection.
+Shocking-VRChat is a Python application designed to bridge **VRChat** with **DG-Lab 3** shock collars (Coyote 3) and **Tuya Smart Devices**. It detects interactions in VRChat via **OSC** and triggers haptic feedback (shocks/vibrations) or smart device actions through a local network connection.
 
-The project features a modern **GUI** inspired by the "Nothing Phone" design language, offering a clean and dark interface for managing your device connection and settings.
+The project features a modern **GUI** inspired by the "Nothing Phone" design language, offering a clean interface for managing your device connection and settings.
 
 ## Features
 
 - **Modern GUI:** A sleek, "Nothing Phone" style interface (monochrome, dot accents) built with Tkinter.
 - **VRChat Integration:** Listens for standard OSC parameters to trigger actions.
 - **DG-Lab 3 Support:** Native support for the DG-Lab 3 app protocol via WebSocket.
-- **Dual Channel Support:** Independently control Channel A and Channel B.
-- **Configurable:** extensive settings via YAML files (`settings-advanced-v0.2.yaml`) to tune strength, duration, and trigger modes.
+- **Tuya IoT Support:** Control Tuya-enabled smart devices (e.g., smart plugs, shockers) via Tuya Cloud API.
+- **Dual Channel Support:** Independently control Channel A and Channel B for DG-Lab 3.
+- **Dynamic Power:** Configurable sensitivity, threshold, and randomized impact boosts.
 - **Built-in Web Server:** Displays a QR code for easy connection with the mobile app.
 
 ## Requirements
 
 - **Python 3.8+**
-- **Hardware:** DG-Lab 3 (Coyote 3) Shock Collar.
+- **Hardware:** 
+  - DG-Lab 3 (Coyote 3) Shock Collar.
+  - (Optional) Tuya Smart Devices.
 - **Software:** 
   - VRChat (PC VR or Desktop).
   - DG-Lab 3 Mobile App (iOS/Android).
@@ -32,7 +35,7 @@ The project features a modern **GUI** inspired by the "Nothing Phone" design lan
 2. **Install dependencies:**
    It is recommended to use a virtual environment.
    ```bash
-   # Create virtual environment (optional but recommended)
+   # Create virtual environment (optional)
    python -m venv venv
    # Activate it:
    #   Windows: venv\Scripts\activate
@@ -44,35 +47,62 @@ The project features a modern **GUI** inspired by the "Nothing Phone" design lan
 
 ## Usage
 
-1. **Start the Application:**
-   Run the GUI version:
-   ```bash
-   python gui_app.py
-   ```
-   *(Alternatively, you can run `shocking_vrchat.py` for a CLI-only experience)*
+### 1. Start the Application
+Run the GUI version for the best experience:
+```bash
+python gui_app.py
+```
+*(Alternatively, run `shocking_vrchat.py` for CLI/Server only mode)*
 
-2. **Connect the App:**
-   - The application will start a local server.
-   - A QR Code should appear (or navigate to `http://<YOUR_PC_IP>:8800` in your browser).
-   - Open the **DG-Lab 3 App** on your phone.
-   - Scan the QR code to connect your phone to the PC server.
+### 2. Connect DG-Lab 3 App
+1. The application will start a local server and display a QR Code in the GUI.
+2. Open the **DG-Lab 3 App** on your phone.
+3. Scan the QR code to connect your phone to the PC server.
+4. Ensure your phone and PC are on the **same Wi-Fi network**.
 
-3. **VRChat Setup:**
-   - Ensure your avatar has the standard VRChat Contact Receivers or parameters set up.
-   - The application listens on port **9001** for OSC messages by default.
-   - Default monitored parameters include:
-     - `/avatar/parameters/Shock/TouchAreaA` (Triggers Channel A)
-     - `/avatar/parameters/Shock/TouchAreaB` (Triggers Channel B)
+### 3. VRChat Setup
+Ensure your avatar has the appropriate Contact Receivers or parameters. The app listens on **UDP Port 9001**.
+
+**Default Monitored Parameters:**
+
+**Channel A:**
+- `/avatar/parameters/pcs/contact/enterPass`
+- `/avatar/parameters/TouchAreaA`
+- `/avatar/parameters/TouchAreaB`
+- `/avatar/parameters/wildcard/*`
+
+**Channel B:**
+- `/avatar/parameters/TouchAreaC`
+- `/avatar/parameters/TouchAreaD`
+- `/avatar/parameters/lms-penis-proximityA*`
 
 ## Configuration
 
-The application uses `settings-advanced-v0.2.yaml` for configuration. You can modify this file to change:
-- **OSC Port:** Default is `9001`.
-- **WebSocket Port:** Default is `28846`.
-- **Strength Limits:** Safety limits for shock intensity.
-- **Trigger Modes:** Customize how parameters map to shock patterns.
+The application uses two configuration files:
+1. `settings-v0.2.yaml` (Basic settings: limits, sensitivity, avatar parameters).
+2. `settings-advanced-v0.2.yaml` (Advanced: internal wave patterns, network ports).
+
+### Tuya Support (Advanced)
+To enable Tuya smart device support, you must manually add the `machine` section to your configuration (usually in `settings-advanced-v0.2.yaml` or merged into the main loaded config).
+
+Add this to your YAML config:
+
+```yaml
+machine:
+  tuya:
+    access_id: "YOUR_TUYA_ACCESS_ID"
+    access_key: "YOUR_TUYA_ACCESS_KEY"
+    device_ids:
+      - "YOUR_DEVICE_ID_1"
+      - "YOUR_DEVICE_ID_2"
+    avatar_params:
+      - "/avatar/parameters/Your_Tuya_Trigger_Param"
+```
+
+*Note: You need to register on the Tuya IoT Platform to get your Access ID and Key.*
 
 ## Troubleshooting
 
-- **No Connection:** Ensure your PC and Phone are on the **same Wi-Fi network**. Detailed firewalls logs might show blocked connections; ensure ports 8800 and 28846 are allowed.
-- **VRChat not triggering:** Check your OSC Debugger in VRChat to ensure messages are being sent. Verify the "OSC" toggle is enabled in the VRChat Radial Menu.
+- **No Connection:** Ensure PC and Phone are on the same Wi-Fi. Check Firewall settings (Allow python/GUI app).
+- **VRChat not triggering:** enable the OSC Debugger in VRChat to verify messages are sending. Check the "OSC" toggle in the Radial Menu.
+- **Tuya Error:** Check your API quota and ensuring the device is online in the Tuya app.

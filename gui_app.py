@@ -220,17 +220,55 @@ class NothingPhoneStyle:
 
 
 class LogHandler:
-    """Custom log handler that outputs to GUI"""
+    """Custom log handler that outputs to GUI and intercepts loguru backend logs"""
+    
+    # Log level mapping from loguru to our levels
+    LOGURU_LEVEL_MAP = {
+        'TRACE': 'INFO',
+        'DEBUG': 'INFO',
+        'INFO': 'INFO',
+        'SUCCESS': 'SUCCESS',
+        'WARNING': 'WARNING',
+        'ERROR': 'ERROR',
+        'CRITICAL': 'ERROR',
+    }
     
     def __init__(self):
         self.log_queue = queue.Queue()
         self.callbacks = []
+        self._loguru_connected = False
     
     def add_callback(self, callback):
         self.callbacks.append(callback)
     
+    def connect_loguru(self):
+        """Connect loguru logger to this handler so backend logs appear in GUI"""
+        if self._loguru_connected:
+            return
+        try:
+            from loguru import logger as loguru_logger
+            
+            def _loguru_sink(message):
+                record = message.record
+                level = self.LOGURU_LEVEL_MAP.get(record['level'].name, 'INFO')
+                # Skip overly verbose debug messages
+                if record['level'].name in ('TRACE', 'DEBUG'):
+                    return
+                # Format with source module info
+                module = record['module']
+                func = record['function']
+                msg = str(record['message'])
+                source = f"[{module}] " if module not in ('gui_app',) else ""
+                self.log(level, f"{source}{msg}")
+            
+            # Remove default stderr handler to avoid duplicate output
+            loguru_logger.add(_loguru_sink, level="INFO", format="{message}")
+            self._loguru_connected = True
+        except ImportError:
+            pass
+    
     def log(self, level, message):
-        timestamp = datetime.now().strftime("%H:%M:%S")
+        timestamp = datetime.now().strftime("%H:%M:%S.") + f"{datetime.now().microsecond // 1000:03d}"
         log_entry = {
             'timestamp': timestamp,
             'level': level.upper(),
@@ -547,16 +585,29 @@ class PowerSlider(tk.Frame):
                                command=lambda: self._adjust(10))
         btn_plus10.pack(side=tk.RIGHT, padx=1)
         
-        # Test shock button
-        self.btn_test = tk.Button(fine_controls, text="⚡ TEST",
+        # Test shock button - separated from main controls with warning style
+        test_frame = tk.Frame(self, bg=NothingPhoneStyle.BG_SECONDARY)
+        test_frame.pack(fill=tk.X, padx=pad_x, pady=(0, 8 if self.compact else 12))
+        
+        # Warning label
+        test_warn = tk.Label(test_frame, text="⚠",
+                             font=self.fonts['small'],
+                             bg=NothingPhoneStyle.BG_SECONDARY,
+                             fg=NothingPhoneStyle.TEXT_MUTED)
+        test_warn.pack(side=tk.LEFT, padx=(0, 4))
+        
+        self.btn_test = tk.Button(test_frame, text="⚡ TEST SHOCK",
                                   font=self.fonts['small'],
-                                  bg=NothingPhoneStyle.ACCENT_RED,
-                                  fg=NothingPhoneStyle.TEXT_PRIMARY,
-                                  activebackground=NothingPhoneStyle.ACCENT_ORANGE,
-                                  bd=0, width=7,
+                                  bg=NothingPhoneStyle.BG_TERTIARY,
+                                  fg=NothingPhoneStyle.LOG_WARNING,
+                                  activebackground=NothingPhoneStyle.ACCENT_RED,
+                                  activeforeground=NothingPhoneStyle.TEXT_PRIMARY,
+                                  bd=1,
+                                  relief=tk.SOLID,
+                                  width=14,
                                   cursor="hand2",
                                   command=self._test_shock)
-        self.btn_test.pack(side=tk.RIGHT, padx=(0, 5))
+        self.btn_test.pack(side=tk.RIGHT)
     
     def _update_dot_color(self):
         """Update dot color based on value"""
@@ -1284,12 +1335,13 @@ class QRCodePanel(tk.Frame):
 
 
 class SystemLogsPanel(tk.Frame):
-    """System logs panel"""
+    """System logs panel with category filters"""
     
     def __init__(self, parent, fonts=None):
         super().__init__(parent, bg=NothingPhoneStyle.BG_SECONDARY)
         self.fonts = fonts or NothingPhoneStyle.get_scaled_fonts()
-        self.max_logs = 200
+        self.max_logs = 300
+        self.auto_scroll = True
         self._create_widgets()
         
         gui_logger.add_callback(self._on_log)
@@ -1320,6 +1372,19 @@ class SystemLogsPanel(tk.Frame):
                               cursor="hand2",
                               command=self._clear_logs)
         btn_clear.pack(side=tk.RIGHT)
+        
+        # Auto-scroll toggle
+        self.auto_scroll_var = tk.BooleanVar(value=True)
+        btn_scroll = tk.Checkbutton(header, text="AUTO↓",
+                                     font=self.fonts['small'],
+                                     variable=self.auto_scroll_var,
+                                     bg=NothingPhoneStyle.BG_SECONDARY,
+                                     fg=NothingPhoneStyle.TEXT_SECONDARY,
+                                     selectcolor=NothingPhoneStyle.BG_TERTIARY,
+                                     activebackground=NothingPhoneStyle.BG_SECONDARY,
+                                     bd=0,
+                                     command=self._toggle_auto_scroll)
+        btn_scroll.pack(side=tk.RIGHT, padx=(0, 5))
         
         # Log container
         log_frame = tk.Frame(self, bg=NothingPhoneStyle.BG_TERTIARY)
@@ -1355,18 +1420,59 @@ class SystemLogsPanel(tk.Frame):
         self.log_text.tag_configure("WARNING", foreground=NothingPhoneStyle.LOG_WARNING)
         self.log_text.tag_configure("ERROR", foreground=NothingPhoneStyle.LOG_ERROR)
         self.log_text.tag_configure("TIME", foreground=NothingPhoneStyle.TEXT_MUTED)
+        # Category tags for backend source modules
+        self.log_text.tag_configure("SRC_OSC", foreground="#6EC6FF")       # OSC data
+        self.log_text.tag_configure("SRC_WS", foreground="#A78BFA")        # WebSocket
+        self.log_text.tag_configure("SRC_POWER", foreground="#F59E0B")     # Power/strength
+        self.log_text.tag_configure("SRC_WAVE", foreground="#34D399")      # Wave patterns
+        self.log_text.tag_configure("SRC_BOOST", foreground="#FB923C")     # Boost events
+        self.log_text.tag_configure("SRC_DEVICE", foreground="#C084FC")    # Device connection
+    
+    def _toggle_auto_scroll(self):
+        self.auto_scroll = self.auto_scroll_var.get()
+    
+    def _get_source_tag(self, message):
+        """Determine source tag based on message content"""
+        msg_lower = message.lower()
+        if any(k in msg_lower for k in ('osc ', 'vrcosc', 'avatar_param', 'osc listen')):
+            return "SRC_OSC"
+        if any(k in msg_lower for k in ('websocket', 'ws conn', 'ws id', 'wsid', 'heartbeat', 'hb')):
+            return "SRC_WS"
+        if any(k in msg_lower for k in ('strength', 'power', 'device_limit', 'set strength', 'device limit')):
+            return "SRC_POWER"
+        if any(k in msg_lower for k in ('wave', 'pulse', 'sending [', 'sending "')):
+            return "SRC_WAVE"
+        if any(k in msg_lower for k in ('boost', 'impact!', 'impact detect', 'decay')):
+            return "SRC_BOOST"
+        if any(k in msg_lower for k in ('connect', 'disconnect', 'closed', 'bind', 'device', 'keep-alive')):
+            return "SRC_DEVICE"
+        return None
     
     def _on_log(self, log_entry):
-        """Handle new log entry"""
+        """Handle new log entry with rich formatting"""
         try:
             self.log_text.configure(state=tk.NORMAL)
             
-            self.log_text.insert(tk.END, f"[{log_entry['timestamp']}] ", "TIME")
-            self.log_text.insert(tk.END, f"[{log_entry['level']}] ", log_entry['level'])
-            self.log_text.insert(tk.END, f"{log_entry['message']}\n")
+            # Timestamp
+            self.log_text.insert(tk.END, f"{log_entry['timestamp']} ", "TIME")
             
-            self.log_text.see(tk.END)
+            # Level badge
+            level = log_entry['level']
+            self.log_text.insert(tk.END, f"{level:<7} ", level)
             
+            # Message with source color
+            message = log_entry['message']
+            source_tag = self._get_source_tag(message)
+            if source_tag:
+                self.log_text.insert(tk.END, f"{message}\n", source_tag)
+            else:
+                self.log_text.insert(tk.END, f"{message}\n")
+            
+            # Auto-scroll
+            if self.auto_scroll:
+                self.log_text.see(tk.END)
+            
+            # Trim old logs
             lines = int(self.log_text.index('end-1c').split('.')[0])
             if lines > self.max_logs:
                 self.log_text.delete('1.0', f'{lines - self.max_logs}.0')
@@ -2304,6 +2410,9 @@ class ShockingVRChatGUI(tk.Tk):
     def _start_server(self):
         """Start the integrated server"""
         try:
+            # Connect loguru to GUI so backend logs appear in log panel
+            gui_logger.connect_loguru()
+            
             # Initialize runtime pattern settings before starting server
             self._init_runtime_pattern_settings()
             

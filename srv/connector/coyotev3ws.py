@@ -68,20 +68,21 @@ class DGConnection():
             assert msg.clientId == self.master_uuid, "Binding to unknown uuid."
             ret = DGWSMessage('bind', clientId=msg.clientId, targetId=msg.targetId, message='200')
             await ret.send(self)
+            logger.success(f'Device {self.uuid[:8]} bound successfully')
         elif msg.type == 'msg':
-            # 跟随强度变化
             if msg.message.startswith('strength-'):
                 self.strength['A'], self.strength['B'], self.strength_max['A'], self.strength_max['B'] = map(int, msg.message[len('strength-'):].split('+'))
+                logger.info(f'Device {self.uuid[:8]} strength sync: A={self.strength["A"]}/{self.strength_max["A"]} B={self.strength["B"]}/{self.strength_max["B"]}')
                 for chann in ['A', 'B']:
                     limit = self.get_upper_strength(chann)
                     if (self.strength[chann] != 0 and self.strength[chann] != limit):
                         await self.set_strength(chann, value=limit)
             elif msg.message.startswith('feedback-'):
-                logger.success(f'ID {self.uuid}, {msg.message}')
+                logger.success(f'Device {self.uuid[:8]} feedback: {msg.message}')
             else:
-                logger.error(f'ID {self.uuid}, unknown msg {msg.message}')
+                logger.warning(f'Device {self.uuid[:8]} unknown message: {msg.message}')
         elif msg.type == 'heartbeat':
-            logger.info(f'ID {self.uuid}, RECV HB')
+            logger.info(f'Device {self.uuid[:8]} heartbeat ♥')
     
     def get_upper_strength(self, channel='A'):
         return min(self.strength_max[channel], self.strength_limit[channel])
@@ -92,14 +93,15 @@ class DGConnection():
                 raise ValueError()
             limit = self.get_upper_strength(channel)
             if value > int(limit) and mode == '2':
-                logger.warning(f'ID {self.uuid}, set_strength, {value} is over the limit {limit}, setting to {limit}.')
+                logger.warning(f'Device {self.uuid[:8]} Channel {channel}: strength {value} exceeds limit {limit}, clamping')
                 value = limit
             # Update activity time only for real usage (not forced keep-alive)
             if value > KEEPALIVE_POWER:
                 LAST_ACTIVITY_TIME[channel] = time.time()
         if mode == '2':
             self.strength[channel] = value
-        logger.info(f"Channel {channel}, set strength, mode {mode}, value {value}.")
+        force_str = " [forced]" if force else ""
+        logger.info(f"Device {self.uuid[:8]} → Set strength Channel {channel}: {value}/200 (limit={self.get_upper_strength(channel)}){force_str}")
         msg = DGWSMessage('msg', self.master_uuid, self.uuid, f"strength-{'1' if channel == 'A' else '2'}+{mode}+{value}")
         await msg.send(self)
 
@@ -124,6 +126,7 @@ class DGConnection():
         LAST_ACTIVITY_TIME[channel] = time.time()
         msg = DGWSMessage('msg', self.master_uuid, self.uuid, f"pulse-{channel}:{wavestr}")
         await msg.send(self)
+        logger.info(f"Device {self.uuid[:8]} → Wave Channel {channel}: {wavestr[:40]}{'...' if len(wavestr) > 40 else ''}")
     
     async def clear_wave(self, channel='A'):
         channel = '1' if channel == 'A' else '2'
@@ -163,11 +166,13 @@ class DGConnection():
     
     async def connection_init(self):
         await asyncio.sleep(2)
+        logger.info(f'Device {self.uuid[:8]} initializing channels...')
         await self.set_strength('A', value=1, force=True)
         await self.set_strength('B', value=1, force=True)
+        logger.success(f'Device {self.uuid[:8]} channels initialized (A=1, B=1)')
 
     async def serve(self):
-        logger.info(f'New WS conn, id {self.uuid}.')
+        logger.success(f'New WebSocket connection: Device {self.uuid[:8]}... (total: {len(WS_CONNECTIONS)})')
         msg = DGWSMessage('bind', clientId=str(self.uuid), targetId='', message='targetId')
         await msg.send(self)
         asyncio.create_task(self.connection_init())
@@ -185,7 +190,7 @@ class DGConnection():
                     DGWSMessage('error',message='500')
             await self.ws_conn.wait_closed()
         finally:
-            logger.warning(f'ID {self.uuid} CLOSED.')
+            logger.warning(f'Device {self.uuid[:8]} disconnected (remaining: {len(WS_CONNECTIONS) - 1})')
             hb.cancel()
             keepalive.cancel()
             WS_CONNECTIONS.remove(self)
