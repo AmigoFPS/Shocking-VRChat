@@ -275,7 +275,6 @@ async def api_v1_sendwave(channel, repeat, wavedata):
         wavedata = '0A0A0A0A64646464'
     wavestr = [wavedata for _ in range(repeat)]
     wavestr = json.dumps(wavestr, separators=(',', ':'))
-    logger.success(f'[API][sendwave] C:{channel} R:{repeat} W:{wavedata}')
     await DGConnection.broadcast_wave(channel=channel, wavestr=wavestr)
     return {'result': 'OK'}
 

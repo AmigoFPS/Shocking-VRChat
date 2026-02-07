@@ -2,7 +2,6 @@ import numpy as np
 import collections
 import random
 from .base_handler import BaseHandler
-from loguru import logger
 import time, asyncio, math, json
 
 from ..connector.coyotev3ws import DGConnection
@@ -69,7 +68,6 @@ class ShockHandler(BaseHandler):
 
     def osc_handler(self, address, *args):
         val = self.param_sanitizer(args)
-        logger.info(f"OSC ← Channel {self.channel}: {address} = {val:.4f}")
         asyncio.ensure_future(self._handler(val))
 
     async def clear_check(self):
@@ -84,11 +82,9 @@ class ShockHandler(BaseHandler):
                 self.bg_wave_current_strength = 0
                 self.touch_dist_arr.clear()
                 await self.DG_CONN.broadcast_clear_wave(self.channel)
-                logger.info(f'Channel {self.channel}, wave cleared after timeout.')
     
     async def feed_wave(self):
         raise NotImplemented
-        logger.info(f'Channel {self.channel} started wave feeding.')
         sleep_time = 1
         while 1:
             await asyncio.sleep(sleep_time)
@@ -133,7 +129,6 @@ class ShockHandler(BaseHandler):
         if out_distance > 0:
             t = time.time()
             self.touch_dist_arr.append([t, out_distance])
-            logger.info(f"Channel {self.channel} input: distance={distance:.4f} → normalized={out_distance:.4f}")
 
     async def handler_distance(self, distance):
         await self.set_clear_after(0.5)
@@ -199,22 +194,13 @@ class ShockHandler(BaseHandler):
             if is_impact and boost_max > 0 and current_boost < boost_max * 0.8:
                 # Impact detected! Apply random boost
                 random_boost = random.randint(boost_min, boost_max)
-                old_boost = int(current_boost)
                 current_boost = min(boost_max, current_boost + random_boost)
-                logger.warning(
-                    f'Channel {self.channel} ⚡ IMPACT DETECTED! '
-                    f'Boost {old_boost}→{int(current_boost)} (+{random_boost}) '
-                    f'[increase={strength_increase:.3f}, raw={raw_strength:.3f}]'
-                )
             
             # Time-based decay: decay over boost_decay_time seconds
             if current_boost > 0:
-                old_boost = current_boost
                 # Calculate how much to decay based on elapsed time
                 decay_amount = (boost_max / boost_decay_time) * time_delta
                 current_boost = max(0, current_boost - decay_amount)
-                if int(old_boost) != int(current_boost) and int(current_boost) % 5 == 0:
-                    logger.info(f'Channel {self.channel} Boost decay: {int(old_boost)}→{int(current_boost)} (-{decay_amount:.1f})')
             
             last_raw_strength = raw_strength
             
@@ -255,21 +241,10 @@ class ShockHandler(BaseHandler):
                     value_0_to_1=current_strength, 
                     device_limit=effective_limit
                 )
-                logger.info(f'Channel {self.channel} ⚡ Set device strength → {device_power}/{effective_limit} '
-                           f'(raw={raw_strength:.3f}, sens={sensitivity:.1f}x, thresh={threshold:.0%})')
                 last_device_power = device_power
-            
-            # Detailed power output log
-            boost_str = f' BOOST+{int(current_boost)}' if current_boost > 0 else ''
-            logger.success(
-                f'Channel {self.channel} [{pattern}] '
-                f'raw:{raw_strength:.3f} → scaled:{scaled_strength:.3f} → out:{current_strength:.3f} '
-                f'→ power:{device_power}/{effective_limit}{boost_str}'
-            )
             
             last_strength = current_strength
             await self.DG_CONN.broadcast_wave(self.channel, wavestr=wave)
-            logger.info(f'Channel {self.channel} 🔊 Wave sent: {last_strength:.3f}→{current_strength:.3f}')
 
     async def distance_background_wave_feeder(self):
         tick_time_window = self.bg_wave_update_time_window / 20
@@ -289,7 +264,6 @@ class ShockHandler(BaseHandler):
                 last_strength, 
                 current_strength
             )
-            logger.success(f'Channel {self.channel}, strength {last_strength:.3f} to {current_strength:.3f}, Sending {wave}')
             last_strength = current_strength
             await self.DG_CONN.broadcast_wave(self.channel, wavestr=wave)
     
@@ -305,7 +279,7 @@ class ShockHandler(BaseHandler):
         if distance > self.mode_config['trigger_range']['bottom'] and current_time > self.to_clear_time:
             shock_duration = self.mode_config['shock']['duration']
             await self.set_clear_after(shock_duration)
-            logger.success(f'Channel {self.channel}: Shocking for {shock_duration} s.')
+            pass
             asyncio.create_task(self.send_shock_wave(shock_duration, self.mode_config['shock']['wave']))
 
     async def handler_touch(self, distance):
@@ -358,7 +332,6 @@ class ShockHandler(BaseHandler):
                 last_strength, 
                 current_strength
             )
-            logger.success(f'Channel {self.channel}, strength {last_strength:.3f} to {current_strength:.3f}, Sending {wave}')
             last_strength = current_strength
             # await self.DG_CONN.broadcast_wave(self.channel, wavestr=wave)
 

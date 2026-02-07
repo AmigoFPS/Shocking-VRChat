@@ -1340,7 +1340,7 @@ class SystemLogsPanel(tk.Frame):
     def __init__(self, parent, fonts=None):
         super().__init__(parent, bg=NothingPhoneStyle.BG_SECONDARY)
         self.fonts = fonts or NothingPhoneStyle.get_scaled_fonts()
-        self.max_logs = 300
+        self.max_logs = 50
         self.auto_scroll = True
         self._create_widgets()
         

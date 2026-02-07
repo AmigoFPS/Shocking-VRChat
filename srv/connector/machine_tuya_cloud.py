@@ -31,20 +31,18 @@ class TuYaConnection():
     async def sendcmd(self, code, value):
         curr_time = time.time()
         if curr_time - self.last_cmd_time < self.cmd_gap and code in ['level', 'mode']:
-            logger.debug(f"Skip cmd: {code}:{value}")
+            pass
         for device_id in self.device_ids:
             resp = self.tyapi.post(f"/v1.0/iot-03/devices/{device_id}/commands", {"commands":[{"code":code,"value":value}]})
-            logger.success(f"{device_id}:{code}:{value}")
             if resp.get('success') != True:
                 logger.error(f"{resp}")
 
     def sendcmd_sync(self, code, value):
         curr_time = time.time()
         if curr_time - self.last_cmd_time < self.cmd_gap and code in ['level', 'mode']:
-            logger.debug(f"Skip cmd: {code}:{value}")
+            pass
         for device_id in self.device_ids:
             resp = self.tyapi.post(f"/v1.0/iot-03/devices/{device_id}/commands", {"commands":[{"code":code,"value":value}]})
-            logger.success(f"{device_id}:{code}:{value}")
             if resp.get('success') != True:
                 logger.error(f"{resp}")
     

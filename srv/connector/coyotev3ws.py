@@ -31,7 +31,6 @@ class DGWSMessage():
         })
     async def send(self, conn):
         msg = self.__str__()
-        logger.debug(f'ID {conn.uuid}, SENDING {msg}')
         ret = await conn.ws_conn.send(msg)
         return ret
 
@@ -72,17 +71,16 @@ class DGConnection():
         elif msg.type == 'msg':
             if msg.message.startswith('strength-'):
                 self.strength['A'], self.strength['B'], self.strength_max['A'], self.strength_max['B'] = map(int, msg.message[len('strength-'):].split('+'))
-                logger.info(f'Device {self.uuid[:8]} strength sync: A={self.strength["A"]}/{self.strength_max["A"]} B={self.strength["B"]}/{self.strength_max["B"]}')
                 for chann in ['A', 'B']:
                     limit = self.get_upper_strength(chann)
                     if (self.strength[chann] != 0 and self.strength[chann] != limit):
                         await self.set_strength(chann, value=limit)
             elif msg.message.startswith('feedback-'):
-                logger.success(f'Device {self.uuid[:8]} feedback: {msg.message}')
+                pass
             else:
                 logger.warning(f'Device {self.uuid[:8]} unknown message: {msg.message}')
         elif msg.type == 'heartbeat':
-            logger.info(f'Device {self.uuid[:8]} heartbeat ♥')
+            pass
     
     def get_upper_strength(self, channel='A'):
         return min(self.strength_max[channel], self.strength_limit[channel])
@@ -100,8 +98,6 @@ class DGConnection():
                 LAST_ACTIVITY_TIME[channel] = time.time()
         if mode == '2':
             self.strength[channel] = value
-        force_str = " [forced]" if force else ""
-        logger.info(f"Device {self.uuid[:8]} → Set strength Channel {channel}: {value}/200 (limit={self.get_upper_strength(channel)}){force_str}")
         msg = DGWSMessage('msg', self.master_uuid, self.uuid, f"strength-{'1' if channel == 'A' else '2'}+{mode}+{value}")
         await msg.send(self)
 
@@ -126,7 +122,6 @@ class DGConnection():
         LAST_ACTIVITY_TIME[channel] = time.time()
         msg = DGWSMessage('msg', self.master_uuid, self.uuid, f"pulse-{channel}:{wavestr}")
         await msg.send(self)
-        logger.info(f"Device {self.uuid[:8]} → Wave Channel {channel}: {wavestr[:40]}{'...' if len(wavestr) > 40 else ''}")
     
     async def clear_wave(self, channel='A'):
         channel = '1' if channel == 'A' else '2'
@@ -139,7 +134,6 @@ class DGConnection():
     async def heartbeat(self):
         while 1:
             await asyncio.sleep(60)
-            logger.info(f'ID {self.uuid}, Sending HB.')
             await self.ws_conn.send(DGWSMessage.HEARTBEAT)
     
     async def device_keepalive(self):
@@ -160,9 +154,8 @@ class DGConnection():
                         await self.set_strength(channel, mode='2', value=KEEPALIVE_POWER, force=True)
                         # Send minimal wave pattern
                         await self.send_wave(channel, wavestr=KEEPALIVE_WAVE)
-                        logger.debug(f'ID {self.uuid}, Channel {channel} keep-alive pulse sent')
-                    except Exception as e:
-                        logger.debug(f'Keep-alive failed: {e}')
+                    except Exception:
+                        pass
     
     async def connection_init(self):
         await asyncio.sleep(2)
@@ -180,7 +173,6 @@ class DGConnection():
             hb = asyncio.ensure_future(self.heartbeat())
             keepalive = asyncio.ensure_future(self.device_keepalive())
             async for message in self.ws_conn:
-                logger.debug(f'WSID {self.uuid}, RECVMSG {message}.')
                 event = json.loads(message)
                 msg = DGWSMessage(**event)
                 try:
@@ -227,9 +219,8 @@ class DGConnection():
             await self.set_strength(channel, mode='2', value=WAKEUP_POWER, force=True)
             # Send short wave pattern
             await self.send_wave(channel, wavestr=WAKEUP_WAVE)
-            logger.info(f'ID {self.uuid}, Channel {channel} wake-up pulse sent')
-        except Exception as e:
-            logger.warning(f'Wake-up pulse failed: {e}')
+        except Exception:
+            pass
     
     @classmethod
     async def broadcast_wakeup_pulse(cls, channel='A'):

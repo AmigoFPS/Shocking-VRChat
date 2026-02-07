@@ -1,7 +1,6 @@
 from . base_handler import BaseHandler
 from ..connector.machine_tuya_cloud import TuYaConnection
 import asyncio, time, math
-from loguru import logger
 
 class TuyaHandler(BaseHandler):
     def __init__(self, SETTINGS: dict, DEV_CONN: TuYaConnection) -> None:
@@ -41,7 +40,6 @@ class TuyaHandler(BaseHandler):
                 self.is_cleared = True
                 self.level_current = 1
                 await self.DEV_CONN.set_level(1)
-                logger.info(f'Machine set to level 1 cleared after timeout.')
 
     async def set_clear_after(self, val):
         self.is_cleared = False
@@ -75,7 +73,6 @@ class TuyaHandler(BaseHandler):
             current_level = math.ceil(self.mode_config['level_max'] * current_strength)
             if last_level == current_level:
                 continue
-            logger.success(f'Machine Tuya, strength {current_strength:.3f}, Setting level {current_level}')
             last_level = current_level
             await self.DEV_CONN.set_level(current_level)
     
