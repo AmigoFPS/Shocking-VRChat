@@ -3,8 +3,40 @@ import collections
 import random
 from .base_handler import BaseHandler
 import time, asyncio, math, json
+from loguru import logger
 
 from ..connector.coyotev3ws import DGConnection
+
+
+# Global power visualizer data - read by GUI for real-time display
+POWER_VISUALIZER_DATA = {
+    'A': {
+        'raw_strength': 0.0,
+        'scaled_strength': 0.0,
+        'current_strength': 0.0,
+        'device_limit': 0,
+        'random_boost': 0.0,
+        'effective_limit': 0,
+        'base_power': 0,
+        'boost_power': 0,
+        'final_power': 0,
+        'pattern': 'PROXIMITY',
+        'warning': False,
+    },
+    'B': {
+        'raw_strength': 0.0,
+        'scaled_strength': 0.0,
+        'current_strength': 0.0,
+        'device_limit': 0,
+        'random_boost': 0.0,
+        'effective_limit': 0,
+        'base_power': 0,
+        'boost_power': 0,
+        'final_power': 0,
+        'pattern': 'PROXIMITY',
+        'warning': False,
+    }
+}
 
 
 # Global runtime settings that can be updated from GUI
@@ -16,6 +48,13 @@ RUNTIME_PATTERN_SETTINGS = {
         'threshold': 10,         # Min activation level (0-100%)
         'impact_boost_min': 0,   # Min random boost on impact (0-100)
         'impact_boost_max': 30,  # Max random boost on impact (0-100)
+        # Advanced settings
+        'boost_cooldown': 5,     # Cooldown between boosts (x0.1 = 0.5s)
+        'boost_decay': 20,       # Boost decay time (x0.1 = 2.0s)
+        'boost_threshold': 15,   # Impact trigger threshold (x0.01 = 0.15)
+        'velocity_range': 50,    # IMPACT: velocity normalization (x0.1 = 5.0)
+        'accel_range': 500,      # RECOIL: acceleration normalization (x0.1 = 50.0)
+        'wave_freq': 10,         # Wave frequency in ms (1-100)
     },
     'B': {
         'pattern': 'PROXIMITY',
@@ -24,6 +63,12 @@ RUNTIME_PATTERN_SETTINGS = {
         'threshold': 10,
         'impact_boost_min': 0,
         'impact_boost_max': 30,
+        'boost_cooldown': 5,
+        'boost_decay': 20,
+        'boost_threshold': 15,
+        'velocity_range': 50,
+        'accel_range': 500,
+        'wave_freq': 10,
     }
 }
 
@@ -58,6 +103,12 @@ class ShockHandler(BaseHandler):
             'threshold': 10,
             'impact_boost_min': 0,
             'impact_boost_max': 30,
+            'boost_cooldown': 5,
+            'boost_decay': 20,
+            'boost_threshold': 15,
+            'velocity_range': 50,
+            'accel_range': 500,
+            'wave_freq': 10,
         })
     
     def start_background_jobs(self):
@@ -142,11 +193,13 @@ class ShockHandler(BaseHandler):
         last_device_power = 0
         last_raw_strength = 0
         last_time = time.time()
+        last_warning_time = 0
         
-        # Impact detection state
-        current_boost = 0  # Current random boost amount
-        boost_decay_time = 3.0  # Seconds to fully decay the boost (slow decay)
-        impact_threshold = 0.2  # Minimum raw strength increase to trigger impact
+        # ── Random Boost state ──
+        current_boost = 0.0       # Current boost value (decays over time)
+        boost_peak = 0.0          # Peak value of the current boost (for decay calc)
+        boost_trigger_time = 0.0  # When the last boost was triggered
+        zero_time = 0.0           # How long signal has been zero (for fast reset)
         
         while 1:
             current_time = time.time()
@@ -167,6 +220,12 @@ class ShockHandler(BaseHandler):
             threshold = runtime.get('threshold', 10) / 100.0  # Convert to 0-1
             boost_min = runtime.get('impact_boost_min', 0)
             boost_max = runtime.get('impact_boost_max', 30)
+            boost_cooldown = runtime.get('boost_cooldown', 5) / 10.0    # x0.1 → seconds
+            boost_decay_time = runtime.get('boost_decay', 20) / 10.0    # x0.1 → seconds
+            impact_threshold = runtime.get('boost_threshold', 15) / 100.0  # x0.01 → 0-1
+            velocity_range = runtime.get('velocity_range', 50) / 10.0    # x0.1 → actual range
+            accel_range = runtime.get('accel_range', 500) / 10.0         # x0.1 → actual range
+            wave_freq = runtime.get('wave_freq', 10)                     # ms
             
             # Calculate raw strength based on pattern
             raw_strength = 0
@@ -178,29 +237,59 @@ class ShockHandler(BaseHandler):
             elif pattern == 'IMPACT' and len(self.touch_dist_arr) >= 4:
                 # Velocity-based strength
                 _, velocity, _, _ = self.compute_derivative()
-                # Normalize velocity (typical range 0-5, map to 0-1)
-                raw_strength = min(1.0, abs(velocity) / 5.0)
+                # Normalize velocity using configurable range
+                raw_strength = min(1.0, abs(velocity) / max(0.1, velocity_range))
                 
             elif pattern == 'RECOIL' and len(self.touch_dist_arr) >= 4:
                 # Acceleration-based strength
                 _, _, acceleration, _ = self.compute_derivative()
-                # Normalize acceleration (typical range 0-50, map to 0-1)
-                raw_strength = min(1.0, abs(acceleration) / 50.0)
+                # Normalize acceleration using configurable range
+                raw_strength = min(1.0, abs(acceleration) / max(0.1, accel_range))
             
-            # Detect impact - sudden increase in raw strength OR high velocity/acceleration
-            strength_increase = raw_strength - last_raw_strength
-            is_impact = strength_increase > impact_threshold or raw_strength > 0.5
-            
-            if is_impact and boost_max > 0 and current_boost < boost_max * 0.8:
-                # Impact detected! Apply random boost
-                random_boost = random.randint(boost_min, boost_max)
-                current_boost = min(boost_max, current_boost + random_boost)
-            
-            # Time-based decay: decay over boost_decay_time seconds
-            if current_boost > 0:
-                # Calculate how much to decay based on elapsed time
-                decay_amount = (boost_max / boost_decay_time) * time_delta
-                current_boost = max(0, current_boost - decay_amount)
+            # ── Random Boost Logic ──
+            # 1) If boost_max was set to 0 (disabled) → instantly reset boost
+            if boost_max <= 0:
+                current_boost = 0.0
+                boost_peak = 0.0
+            else:
+                # 2) Detect impact: only a sharp INCREASE in raw_strength triggers boost
+                #    Must also pass cooldown since last trigger
+                strength_increase = raw_strength - last_raw_strength
+                time_since_trigger = current_time - boost_trigger_time
+                
+                if (strength_increase > impact_threshold 
+                        and time_since_trigger > boost_cooldown
+                        and raw_strength > 0.05):
+                    # Impact! Set a fresh random boost (replaces, doesn't stack)
+                    new_boost = random.randint(boost_min, boost_max)
+                    current_boost = float(new_boost)
+                    boost_peak = current_boost
+                    boost_trigger_time = current_time
+                
+                # 3) Decay boost over time (linear from peak to 0 over boost_decay_time)
+                if current_boost > 0:
+                    time_since_trigger = current_time - boost_trigger_time
+                    
+                    if raw_strength <= 0.01:
+                        # Signal is zero → fast decay (3x speed)
+                        zero_time += time_delta
+                        fast_decay = (boost_peak / boost_decay_time) * time_delta * 3.0
+                        current_boost = max(0.0, current_boost - fast_decay)
+                        # If signal has been zero for over 0.5s, kill boost instantly
+                        if zero_time > 0.5:
+                            current_boost = 0.0
+                            boost_peak = 0.0
+                    else:
+                        zero_time = 0.0
+                        # Normal linear decay
+                        decay_amount = (boost_peak / boost_decay_time) * time_delta
+                        current_boost = max(0.0, current_boost - decay_amount)
+                    
+                    if current_boost <= 0.5:
+                        current_boost = 0.0
+                        boost_peak = 0.0
+                else:
+                    zero_time = 0.0
             
             last_raw_strength = raw_strength
             
@@ -217,29 +306,61 @@ class ShockHandler(BaseHandler):
             
             self.bg_wave_current_strength = current_strength
             
-            # Calculate effective device limit with boost (capped at 200)
+            # Calculate effective device limit with boost (NOT capped at device_limit!)
+            # Boost is allowed to exceed the configured limit, capped only at hardware max 200
             effective_limit = min(200, device_limit + int(current_boost))
+            
+            # Calculate power components for visualization
+            base_power = int(current_strength * device_limit)
+            boost_power = int(current_strength * int(current_boost)) if current_boost > 0 else 0
             
             # Calculate actual device power (0 to effective_limit)
             device_power = int(current_strength * effective_limit)
+            
+            # Check if boost exceeds configured limit - WARNING
+            is_exceeding = (effective_limit > device_limit) and (current_strength > 0) and (device_power > device_limit)
+            
+            if is_exceeding and current_time - last_warning_time > 2.0:
+                last_warning_time = current_time
+                logger.warning(
+                    f'Channel {self.channel}: ⚡ Random boost +{int(current_boost)} '
+                    f'exceeds limit {device_limit}! Power: {device_power}/{effective_limit}'
+                )
+            
+            # Update visualizer data for GUI
+            POWER_VISUALIZER_DATA[self.channel] = {
+                'raw_strength': raw_strength,
+                'scaled_strength': scaled_strength,
+                'current_strength': current_strength,
+                'device_limit': device_limit,
+                'random_boost': current_boost,
+                'effective_limit': effective_limit,
+                'base_power': base_power,
+                'boost_power': boost_power,
+                'final_power': device_power,
+                'pattern': pattern,
+                'warning': is_exceeding,
+            }
             
             if current_strength == last_strength == 0:
                 continue
             
             # Send wave pattern (controls the wave shape)
             wave = self.generate_wave_100ms(
-                self.mode_config['distance']['freq_ms'], 
+                wave_freq, 
                 last_strength, 
                 current_strength
             )
             
             # IMPORTANT: Also update actual device power dynamically!
             # This makes the device actually change power based on input
+            # allow_exceed=True when boost is active so power goes BEYOND the limit
             if device_power != last_device_power:
                 await self.DG_CONN.broadcast_strength_with_limit(
                     self.channel, 
                     value_0_to_1=current_strength, 
-                    device_limit=effective_limit
+                    device_limit=effective_limit,
+                    allow_exceed=(current_boost > 0)
                 )
                 last_device_power = device_power
             

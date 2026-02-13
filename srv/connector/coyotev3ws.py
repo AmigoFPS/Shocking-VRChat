@@ -85,14 +85,20 @@ class DGConnection():
     def get_upper_strength(self, channel='A'):
         return min(self.strength_max[channel], self.strength_limit[channel])
 
-    async def set_strength(self, channel='A', mode='2', value=0, force=False):
+    async def set_strength(self, channel='A', mode='2', value=0, force=False, allow_exceed=False):
         if not force:
             if value < 0 or value > 200:
                 raise ValueError()
             limit = self.get_upper_strength(channel)
             if value > int(limit) and mode == '2':
-                logger.warning(f'Device {self.uuid[:8]} Channel {channel}: strength {value} exceeds limit {limit}, clamping')
-                value = limit
+                if allow_exceed:
+                    # Boost exceeds limit - allow it but cap at hardware max
+                    hw_max = self.strength_max.get(channel, 200)
+                    value = min(value, hw_max)
+                    logger.warning(f'Device {self.uuid[:8]} Channel {channel}: ⚡ BOOST {value} exceeds limit {limit}!')
+                else:
+                    logger.warning(f'Device {self.uuid[:8]} Channel {channel}: strength {value} exceeds limit {limit}, clamping')
+                    value = limit
             # Update activity time only for real usage (not forced keep-alive)
             if value > KEEPALIVE_POWER:
                 LAST_ACTIVITY_TIME[channel] = time.time()
@@ -108,14 +114,14 @@ class DGConnection():
         strength = int(limit * value)
         await self.set_strength(channel=channel, mode='2', value=strength)
     
-    async def set_strength_with_limit(self, channel='A', value_0_to_1=0, device_limit=100):
+    async def set_strength_with_limit(self, channel='A', value_0_to_1=0, device_limit=100, allow_exceed=False):
         """Set strength using a specific device limit (for dynamic power control)"""
         if value_0_to_1 < 0 or value_0_to_1 > 1:
             value_0_to_1 = max(0, min(1, value_0_to_1))
         # Use the minimum of device_limit and hardware max
         effective_limit = min(self.strength_max.get(channel, 200), device_limit)
         strength = int(effective_limit * value_0_to_1)
-        await self.set_strength(channel=channel, mode='2', value=strength)
+        await self.set_strength(channel=channel, mode='2', value=strength, allow_exceed=allow_exceed)
 
     async def send_wave(self, channel='A', wavestr=DEFAULT_WAVE):
         # Update activity time to prevent keep-alive during active usage
@@ -206,11 +212,11 @@ class DGConnection():
             await conn.set_strength_0_to_1(channel=channel, value=value)
     
     @classmethod
-    async def broadcast_strength_with_limit(cls, channel='A', value_0_to_1=0, device_limit=100):
+    async def broadcast_strength_with_limit(cls, channel='A', value_0_to_1=0, device_limit=100, allow_exceed=False):
         """Set strength with a specific device limit (ignores connection strength_limit)"""
         for conn in WS_CONNECTIONS:
             conn : cls
-            await conn.set_strength_with_limit(channel=channel, value_0_to_1=value_0_to_1, device_limit=device_limit)
+            await conn.set_strength_with_limit(channel=channel, value_0_to_1=value_0_to_1, device_limit=device_limit, allow_exceed=allow_exceed)
     
     async def send_wakeup_pulse(self, channel='A'):
         """Send a small pulse to wake up the device when power level changes"""

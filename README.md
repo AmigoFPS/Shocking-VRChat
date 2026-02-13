@@ -12,6 +12,8 @@ The project features a modern **GUI** inspired by the "Nothing Phone" design lan
 - **Tuya IoT Support:** Control Tuya-enabled smart devices (e.g., smart plugs, shockers) via Tuya Cloud API.
 - **Dual Channel Support:** Independently control Channel A and Channel B for DG-Lab 3.
 - **Dynamic Power:** Configurable sensitivity, threshold, and randomized impact boosts.
+- **Power Visualizer:** Real-time graph showing base power, random boosts, and limits.
+- **Advanced Pattern Tuning:** Fine-tune velocity and acceleration sensitivity, boost decay, and wave frequency.
 - **Built-in Web Server:** Displays a QR code for easy connection with the mobile app.
 
 ## Requirements
@@ -60,7 +62,18 @@ python gui_app.py
 3. Scan the QR code to connect your phone to the PC server.
 4. Ensure your phone and PC are on the **same Wi-Fi network**.
 
-### 3. VRChat Setup
+### 3. Power Controls & Tuning
+- **Power Visualizer:** Monitor real-time power output (Base vs Boost) and limits. Toggle with the **ON/OFF** button.
+- **Pattern Modes:**
+  - **PROXIMITY:** Power based on distance.
+  - **IMPACT:** Power based on velocity (speed of movement).
+  - **RECOIL:** Power based on acceleration (sudden stops/starts).
+- **Advanced Settings:** Click **▸ ADVANCED** to fine-tune:
+  - **Boost Tuning:** Cooldowns, decay rates, and trigger thresholds.
+  - **Pattern Ranges:** Adjust sensitivity for velocity/acceleration mapping.
+  - **Wave Freq:** Custom update frequency.
+
+### 4. VRChat Setup
 Ensure your avatar has the appropriate Contact Receivers or parameters. The app listens on **UDP Port 9001**.
 
 **Default Monitored Parameters:**

@@ -45,6 +45,14 @@ SETTINGS_BASIC_DEFAULT = {
             # Random boost on impact
             'impact_boost_min': 0,    # Min random boost (0-100)
             'impact_boost_max': 30,   # Max random boost (0-100)
+            # Boost tuning (advanced)
+            'boost_cooldown': 5,      # Cooldown between boosts (x0.1s = 0.5s)
+            'boost_decay': 20,        # Boost decay time (x0.1s = 2.0s)
+            'boost_threshold': 15,    # Impact trigger sensitivity (x0.01 = 0.15)
+            # Pattern-specific (advanced)
+            'velocity_range': 50,     # IMPACT velocity normalization (x0.1 = 5.0)
+            'accel_range': 500,       # RECOIL accel normalization (x0.1 = 50.0)
+            'wave_freq': 10,          # Wave frequency in ms (1-100)
         },
         'channel_b': {
             'avatar_params': [
@@ -63,6 +71,14 @@ SETTINGS_BASIC_DEFAULT = {
             # Random boost on impact
             'impact_boost_min': 0,    # Min random boost (0-100)
             'impact_boost_max': 30,   # Max random boost (0-100)
+            # Boost tuning (advanced)
+            'boost_cooldown': 5,      # Cooldown between boosts (x0.1s = 0.5s)
+            'boost_decay': 20,        # Boost decay time (x0.1s = 2.0s)
+            'boost_threshold': 15,    # Impact trigger sensitivity (x0.01 = 0.15)
+            # Pattern-specific (advanced)
+            'velocity_range': 50,     # IMPACT velocity normalization (x0.1 = 5.0)
+            'accel_range': 500,       # RECOIL accel normalization (x0.1 = 50.0)
+            'wave_freq': 10,          # Wave frequency in ms (1-100)
         }
     },
     'version': CONFIG_FILE_VERSION,
@@ -748,6 +764,8 @@ class PatternSelector(tk.Frame):
     def __init__(self, parent, channel, initial_mode='PROXIMITY', 
                  initial_device_limit=100, initial_sensitivity=100, initial_threshold=10,
                  initial_boost_min=0, initial_boost_max=30,
+                 initial_boost_cooldown=5, initial_boost_decay=20, initial_boost_threshold=15,
+                 initial_velocity_range=50, initial_accel_range=500, initial_wave_freq=10,
                  callback=None, settings_callback=None, fonts=None):
         super().__init__(parent, bg=NothingPhoneStyle.BG_SECONDARY)
         self.channel = channel
@@ -760,6 +778,13 @@ class PatternSelector(tk.Frame):
         self.threshold = tk.IntVar(value=initial_threshold)
         self.impact_boost_min = tk.IntVar(value=initial_boost_min)
         self.impact_boost_max = tk.IntVar(value=initial_boost_max)
+        self.boost_cooldown = tk.IntVar(value=initial_boost_cooldown)
+        self.boost_decay = tk.IntVar(value=initial_boost_decay)
+        self.boost_threshold = tk.IntVar(value=initial_boost_threshold)
+        self.velocity_range = tk.IntVar(value=initial_velocity_range)
+        self.accel_range = tk.IntVar(value=initial_accel_range)
+        self.wave_freq = tk.IntVar(value=initial_wave_freq)
+        self.advanced_visible = False
         self._create_widgets()
     
     def _create_widgets(self):
@@ -1022,6 +1047,299 @@ class PatternSelector(tk.Frame):
                                               fg=NothingPhoneStyle.ACCENT_RED,
                                               width=5)
         self.boost_max_value_label.pack(side=tk.RIGHT)
+        
+        # ── Advanced Settings Toggle ──
+        self.advanced_toggle_btn = tk.Button(
+            self.settings_frame,
+            text="▸ ADVANCED",
+            font=self.fonts['small'],
+            bg=NothingPhoneStyle.BG_TERTIARY,
+            fg=NothingPhoneStyle.TEXT_MUTED,
+            activebackground=NothingPhoneStyle.BG_TERTIARY,
+            activeforeground=NothingPhoneStyle.TEXT_PRIMARY,
+            bd=0,
+            cursor="hand2",
+            anchor=tk.W,
+            padx=5, pady=2,
+            command=self._toggle_advanced
+        )
+        self.advanced_toggle_btn.pack(fill=tk.X, pady=(5, 0))
+        
+        # ── Advanced Settings Frame (hidden by default) ──
+        self.advanced_frame = tk.Frame(self.settings_frame, bg=NothingPhoneStyle.BG_SECONDARY)
+        # Don't pack yet - hidden by default
+        
+        # ── Boost Tuning section (inside advanced) ──
+        boost_tuning_title = tk.Label(self.advanced_frame, text="⚙ Boost Tuning:",
+                                      font=self.fonts['small'],
+                                      bg=NothingPhoneStyle.BG_SECONDARY,
+                                      fg=NothingPhoneStyle.TEXT_MUTED,
+                                      anchor=tk.W)
+        boost_tuning_title.pack(fill=tk.X, pady=(5, 2))
+        
+        # Cooldown slider (1-30 → 0.1s - 3.0s)
+        self.cooldown_frame = tk.Frame(self.advanced_frame, bg=NothingPhoneStyle.BG_SECONDARY)
+        self.cooldown_frame.pack(fill=tk.X, pady=1)
+        
+        cooldown_label = tk.Label(self.cooldown_frame, text="  Cooldown:",
+                                  font=self.fonts['small'],
+                                  bg=NothingPhoneStyle.BG_SECONDARY,
+                                  fg=NothingPhoneStyle.TEXT_SECONDARY,
+                                  width=12, anchor=tk.W)
+        cooldown_label.pack(side=tk.LEFT)
+        
+        self.cooldown_slider = tk.Scale(
+            self.cooldown_frame,
+            from_=1, to=30,
+            orient=tk.HORIZONTAL,
+            variable=self.boost_cooldown,
+            font=self.fonts['small'],
+            bg=NothingPhoneStyle.BG_SECONDARY,
+            fg=NothingPhoneStyle.TEXT_PRIMARY,
+            troughcolor=NothingPhoneStyle.BG_TERTIARY,
+            activebackground=NothingPhoneStyle.ACCENT_ORANGE,
+            highlightthickness=0,
+            bd=0,
+            sliderrelief=tk.FLAT,
+            length=120,
+            showvalue=0,
+            command=lambda v: self._on_setting_change('boost_cooldown', int(v))
+        )
+        self.cooldown_slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5, 0))
+        
+        self.cooldown_value_label = tk.Label(self.cooldown_frame,
+                                             text=f"{self.boost_cooldown.get()/10:.1f}s",
+                                             font=self.fonts['small'],
+                                             bg=NothingPhoneStyle.BG_SECONDARY,
+                                             fg=NothingPhoneStyle.TEXT_SECONDARY,
+                                             width=5)
+        self.cooldown_value_label.pack(side=tk.RIGHT)
+        
+        # Decay time slider (5-100 → 0.5s - 10.0s)
+        self.decay_frame = tk.Frame(self.advanced_frame, bg=NothingPhoneStyle.BG_SECONDARY)
+        self.decay_frame.pack(fill=tk.X, pady=1)
+        
+        decay_label = tk.Label(self.decay_frame, text="  Decay:",
+                               font=self.fonts['small'],
+                               bg=NothingPhoneStyle.BG_SECONDARY,
+                               fg=NothingPhoneStyle.TEXT_SECONDARY,
+                               width=12, anchor=tk.W)
+        decay_label.pack(side=tk.LEFT)
+        
+        self.decay_slider = tk.Scale(
+            self.decay_frame,
+            from_=5, to=100,
+            orient=tk.HORIZONTAL,
+            variable=self.boost_decay,
+            font=self.fonts['small'],
+            bg=NothingPhoneStyle.BG_SECONDARY,
+            fg=NothingPhoneStyle.TEXT_PRIMARY,
+            troughcolor=NothingPhoneStyle.BG_TERTIARY,
+            activebackground=NothingPhoneStyle.ACCENT_ORANGE,
+            highlightthickness=0,
+            bd=0,
+            sliderrelief=tk.FLAT,
+            length=120,
+            showvalue=0,
+            command=lambda v: self._on_setting_change('boost_decay', int(v))
+        )
+        self.decay_slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5, 0))
+        
+        self.decay_value_label = tk.Label(self.decay_frame,
+                                          text=f"{self.boost_decay.get()/10:.1f}s",
+                                          font=self.fonts['small'],
+                                          bg=NothingPhoneStyle.BG_SECONDARY,
+                                          fg=NothingPhoneStyle.TEXT_SECONDARY,
+                                          width=5)
+        self.decay_value_label.pack(side=tk.RIGHT)
+        
+        # Impact threshold slider (1-100 → 0.01 - 1.00)
+        self.bthreshold_frame = tk.Frame(self.advanced_frame, bg=NothingPhoneStyle.BG_SECONDARY)
+        self.bthreshold_frame.pack(fill=tk.X, pady=1)
+        
+        bthreshold_label = tk.Label(self.bthreshold_frame, text="  Trigger:",
+                                    font=self.fonts['small'],
+                                    bg=NothingPhoneStyle.BG_SECONDARY,
+                                    fg=NothingPhoneStyle.TEXT_SECONDARY,
+                                    width=12, anchor=tk.W)
+        bthreshold_label.pack(side=tk.LEFT)
+        
+        self.bthreshold_slider = tk.Scale(
+            self.bthreshold_frame,
+            from_=1, to=100,
+            orient=tk.HORIZONTAL,
+            variable=self.boost_threshold,
+            font=self.fonts['small'],
+            bg=NothingPhoneStyle.BG_SECONDARY,
+            fg=NothingPhoneStyle.TEXT_PRIMARY,
+            troughcolor=NothingPhoneStyle.BG_TERTIARY,
+            activebackground=NothingPhoneStyle.ACCENT_ORANGE,
+            highlightthickness=0,
+            bd=0,
+            sliderrelief=tk.FLAT,
+            length=120,
+            showvalue=0,
+            command=lambda v: self._on_setting_change('boost_threshold', int(v))
+        )
+        self.bthreshold_slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5, 0))
+        
+        self.bthreshold_value_label = tk.Label(self.bthreshold_frame,
+                                               text=f"{self.boost_threshold.get()}%",
+                                               font=self.fonts['small'],
+                                               bg=NothingPhoneStyle.BG_SECONDARY,
+                                               fg=NothingPhoneStyle.TEXT_SECONDARY,
+                                               width=5)
+        self.bthreshold_value_label.pack(side=tk.RIGHT)
+        
+        # ── Pattern-Specific Settings section (inside advanced) ──
+        pattern_specific_title = tk.Label(self.advanced_frame, text="⚡ Pattern Settings:",
+                                          font=self.fonts['small'],
+                                          bg=NothingPhoneStyle.BG_SECONDARY,
+                                          fg=NothingPhoneStyle.TEXT_MUTED,
+                                          anchor=tk.W)
+        pattern_specific_title.pack(fill=tk.X, pady=(8, 2))
+        
+        # IMPACT: Velocity Range slider (5-200 → x0.1 = 0.5 - 20.0)
+        self.velocity_frame = tk.Frame(self.advanced_frame, bg=NothingPhoneStyle.BG_SECONDARY)
+        # packed/unpacked dynamically based on pattern
+        
+        velocity_label = tk.Label(self.velocity_frame, text="  Vel Range:",
+                                  font=self.fonts['small'],
+                                  bg=NothingPhoneStyle.BG_SECONDARY,
+                                  fg=NothingPhoneStyle.TEXT_SECONDARY,
+                                  width=12, anchor=tk.W)
+        velocity_label.pack(side=tk.LEFT)
+        
+        self.velocity_slider = tk.Scale(
+            self.velocity_frame,
+            from_=5, to=200,
+            orient=tk.HORIZONTAL,
+            variable=self.velocity_range,
+            font=self.fonts['small'],
+            bg=NothingPhoneStyle.BG_SECONDARY,
+            fg=NothingPhoneStyle.TEXT_PRIMARY,
+            troughcolor=NothingPhoneStyle.BG_TERTIARY,
+            activebackground=NothingPhoneStyle.LOG_INFO,
+            highlightthickness=0,
+            bd=0,
+            sliderrelief=tk.FLAT,
+            length=120,
+            showvalue=0,
+            command=lambda v: self._on_setting_change('velocity_range', int(v))
+        )
+        self.velocity_slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5, 0))
+        
+        self.velocity_value_label = tk.Label(self.velocity_frame,
+                                             text=f"{self.velocity_range.get()/10:.1f}",
+                                             font=self.fonts['small'],
+                                             bg=NothingPhoneStyle.BG_SECONDARY,
+                                             fg=NothingPhoneStyle.LOG_INFO,
+                                             width=5)
+        self.velocity_value_label.pack(side=tk.RIGHT)
+        
+        # RECOIL: Accel Range slider (10-2000 → x0.1 = 1.0 - 200.0)
+        self.accel_frame = tk.Frame(self.advanced_frame, bg=NothingPhoneStyle.BG_SECONDARY)
+        # packed/unpacked dynamically based on pattern
+        
+        accel_label = tk.Label(self.accel_frame, text="  Acc Range:",
+                               font=self.fonts['small'],
+                               bg=NothingPhoneStyle.BG_SECONDARY,
+                               fg=NothingPhoneStyle.TEXT_SECONDARY,
+                               width=12, anchor=tk.W)
+        accel_label.pack(side=tk.LEFT)
+        
+        self.accel_slider = tk.Scale(
+            self.accel_frame,
+            from_=10, to=2000,
+            orient=tk.HORIZONTAL,
+            variable=self.accel_range,
+            font=self.fonts['small'],
+            bg=NothingPhoneStyle.BG_SECONDARY,
+            fg=NothingPhoneStyle.TEXT_PRIMARY,
+            troughcolor=NothingPhoneStyle.BG_TERTIARY,
+            activebackground=NothingPhoneStyle.LOG_INFO,
+            highlightthickness=0,
+            bd=0,
+            sliderrelief=tk.FLAT,
+            length=120,
+            showvalue=0,
+            command=lambda v: self._on_setting_change('accel_range', int(v))
+        )
+        self.accel_slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5, 0))
+        
+        self.accel_value_label = tk.Label(self.accel_frame,
+                                          text=f"{self.accel_range.get()/10:.1f}",
+                                          font=self.fonts['small'],
+                                          bg=NothingPhoneStyle.BG_SECONDARY,
+                                          fg=NothingPhoneStyle.LOG_INFO,
+                                          width=5)
+        self.accel_value_label.pack(side=tk.RIGHT)
+        
+        # Wave Frequency slider (1-100 ms) - common for all patterns
+        self.wavefreq_frame = tk.Frame(self.advanced_frame, bg=NothingPhoneStyle.BG_SECONDARY)
+        self.wavefreq_frame.pack(fill=tk.X, pady=1)
+        
+        wavefreq_label = tk.Label(self.wavefreq_frame, text="  Wave Freq:",
+                                  font=self.fonts['small'],
+                                  bg=NothingPhoneStyle.BG_SECONDARY,
+                                  fg=NothingPhoneStyle.TEXT_SECONDARY,
+                                  width=12, anchor=tk.W)
+        wavefreq_label.pack(side=tk.LEFT)
+        
+        self.wavefreq_slider = tk.Scale(
+            self.wavefreq_frame,
+            from_=1, to=100,
+            orient=tk.HORIZONTAL,
+            variable=self.wave_freq,
+            font=self.fonts['small'],
+            bg=NothingPhoneStyle.BG_SECONDARY,
+            fg=NothingPhoneStyle.TEXT_PRIMARY,
+            troughcolor=NothingPhoneStyle.BG_TERTIARY,
+            activebackground=NothingPhoneStyle.LOG_INFO,
+            highlightthickness=0,
+            bd=0,
+            sliderrelief=tk.FLAT,
+            length=120,
+            showvalue=0,
+            command=lambda v: self._on_setting_change('wave_freq', int(v))
+        )
+        self.wavefreq_slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5, 0))
+        
+        self.wavefreq_value_label = tk.Label(self.wavefreq_frame,
+                                             text=f"{self.wave_freq.get()}ms",
+                                             font=self.fonts['small'],
+                                             bg=NothingPhoneStyle.BG_SECONDARY,
+                                             fg=NothingPhoneStyle.LOG_INFO,
+                                             width=5)
+        self.wavefreq_value_label.pack(side=tk.RIGHT)
+        
+        # Show pattern-specific sliders for initial pattern
+        self._update_pattern_specific_sliders()
+    
+    def _toggle_advanced(self):
+        """Toggle visibility of advanced settings"""
+        self.advanced_visible = not self.advanced_visible
+        if self.advanced_visible:
+            self.advanced_frame.pack(fill=tk.X, pady=(2, 0))
+            self.advanced_toggle_btn.configure(text="▾ ADVANCED", fg=NothingPhoneStyle.TEXT_PRIMARY)
+            self._update_pattern_specific_sliders()
+        else:
+            self.advanced_frame.pack_forget()
+            self.advanced_toggle_btn.configure(text="▸ ADVANCED", fg=NothingPhoneStyle.TEXT_MUTED)
+    
+    def _update_pattern_specific_sliders(self):
+        """Show/hide pattern-specific sliders based on current pattern"""
+        selected = self.selected_pattern.get()
+        
+        # Hide all pattern-specific frames first
+        self.velocity_frame.pack_forget()
+        self.accel_frame.pack_forget()
+        
+        # Show relevant ones (pack before the wave freq frame)
+        if selected == 'IMPACT':
+            self.velocity_frame.pack(fill=tk.X, pady=1, before=self.wavefreq_frame)
+        elif selected == 'RECOIL':
+            self.accel_frame.pack(fill=tk.X, pady=1, before=self.wavefreq_frame)
     
     def _update_button_styles(self):
         """Update button styles based on selection"""
@@ -1047,6 +1365,10 @@ class PatternSelector(tk.Frame):
         
         # Update description
         self.desc_label.configure(text=self.PATTERNS[selected]['description'])
+        
+        # Update pattern-specific sliders visibility
+        if self.advanced_visible:
+            self._update_pattern_specific_sliders()
         
         # Notify callback
         if self.callback:
@@ -1077,6 +1399,18 @@ class PatternSelector(tk.Frame):
                 self.boost_min_value_label.configure(text=f"+{value}")
                 if self.settings_callback:
                     self.settings_callback(self.channel, 'impact_boost_min', value)
+        elif setting_name == 'boost_cooldown':
+            self.cooldown_value_label.configure(text=f"{value/10:.1f}s")
+        elif setting_name == 'boost_decay':
+            self.decay_value_label.configure(text=f"{value/10:.1f}s")
+        elif setting_name == 'boost_threshold':
+            self.bthreshold_value_label.configure(text=f"{value}%")
+        elif setting_name == 'velocity_range':
+            self.velocity_value_label.configure(text=f"{value/10:.1f}")
+        elif setting_name == 'accel_range':
+            self.accel_value_label.configure(text=f"{value/10:.1f}")
+        elif setting_name == 'wave_freq':
+            self.wavefreq_value_label.configure(text=f"{value}ms")
         
         if self.settings_callback:
             self.settings_callback(self.channel, setting_name, value)
@@ -1096,7 +1430,13 @@ class PatternSelector(tk.Frame):
             'sensitivity': self.sensitivity.get(),
             'threshold': self.threshold.get(),
             'impact_boost_min': self.impact_boost_min.get(),
-            'impact_boost_max': self.impact_boost_max.get()
+            'impact_boost_max': self.impact_boost_max.get(),
+            'boost_cooldown': self.boost_cooldown.get(),
+            'boost_decay': self.boost_decay.get(),
+            'boost_threshold': self.boost_threshold.get(),
+            'velocity_range': self.velocity_range.get(),
+            'accel_range': self.accel_range.get(),
+            'wave_freq': self.wave_freq.get(),
         }
     
     def set_pattern(self, pattern_name):
@@ -1107,7 +1447,9 @@ class PatternSelector(tk.Frame):
             self.desc_label.configure(text=self.PATTERNS[pattern_name]['description'])
     
     def set_settings(self, device_limit=None, sensitivity=None, threshold=None, 
-                     impact_boost_min=None, impact_boost_max=None):
+                     impact_boost_min=None, impact_boost_max=None,
+                     boost_cooldown=None, boost_decay=None, boost_threshold=None,
+                     velocity_range=None, accel_range=None, wave_freq=None):
         """Set dynamic power settings"""
         if device_limit is not None:
             self.device_limit.set(device_limit)
@@ -1124,6 +1466,274 @@ class PatternSelector(tk.Frame):
         if impact_boost_max is not None:
             self.impact_boost_max.set(impact_boost_max)
             self.boost_max_value_label.configure(text=f"+{impact_boost_max}")
+        if boost_cooldown is not None:
+            self.boost_cooldown.set(boost_cooldown)
+            self.cooldown_value_label.configure(text=f"{boost_cooldown/10:.1f}s")
+        if boost_decay is not None:
+            self.boost_decay.set(boost_decay)
+            self.decay_value_label.configure(text=f"{boost_decay/10:.1f}s")
+        if boost_threshold is not None:
+            self.boost_threshold.set(boost_threshold)
+            self.bthreshold_value_label.configure(text=f"{boost_threshold}%")
+        if velocity_range is not None:
+            self.velocity_range.set(velocity_range)
+            self.velocity_value_label.configure(text=f"{velocity_range/10:.1f}")
+        if accel_range is not None:
+            self.accel_range.set(accel_range)
+            self.accel_value_label.configure(text=f"{accel_range/10:.1f}")
+        if wave_freq is not None:
+            self.wave_freq.set(wave_freq)
+            self.wavefreq_value_label.configure(text=f"{wave_freq}ms")
+
+
+class PowerVisualizerPanel(tk.Frame):
+    """Real-time power visualization panel showing per-component power breakdown"""
+    
+    BAR_HEIGHT = 14
+    CHANNEL_HEIGHT = 62  # Height per channel block
+    
+    # Colors for components
+    COLOR_BASE = "#00FF7F"        # Green - base power
+    COLOR_BOOST = "#FF6B35"       # Orange - random boost
+    COLOR_LIMIT_LINE = "#FF3B30"  # Red - limit marker
+    COLOR_WARNING = "#FFD700"     # Yellow - warning
+    COLOR_BAR_BG = "#1A1A1A"      # Dark bar background
+    
+    def __init__(self, parent, fonts=None):
+        super().__init__(parent, bg=NothingPhoneStyle.BG_SECONDARY)
+        self.fonts = fonts or NothingPhoneStyle.get_scaled_fonts()
+        self.enabled = tk.BooleanVar(value=True)
+        self.update_interval = 60  # ms (~16fps)
+        self._after_id = None
+        self._create_widgets()
+        self._schedule_update()
+    
+    def _create_widgets(self):
+        # Header with toggle
+        header = tk.Frame(self, bg=NothingPhoneStyle.BG_SECONDARY)
+        header.pack(fill=tk.X, padx=10, pady=(10, 5))
+        
+        dot_canvas = tk.Canvas(header, width=10, height=10,
+                               bg=NothingPhoneStyle.BG_SECONDARY,
+                               highlightthickness=0)
+        dot_canvas.pack(side=tk.LEFT, padx=(0, 8))
+        dot_canvas.create_oval(2, 2, 8, 8, fill=NothingPhoneStyle.ACCENT_RED, outline="")
+        
+        title = tk.Label(header, text="POWER MONITOR",
+                         font=self.fonts['heading'],
+                         bg=NothingPhoneStyle.BG_SECONDARY,
+                         fg=NothingPhoneStyle.TEXT_PRIMARY)
+        title.pack(side=tk.LEFT)
+        
+        # Toggle button
+        self.toggle_btn = tk.Checkbutton(
+            header, text="ON", variable=self.enabled,
+            font=self.fonts['small'],
+            bg=NothingPhoneStyle.BG_SECONDARY,
+            fg=NothingPhoneStyle.TEXT_SECONDARY,
+            activebackground=NothingPhoneStyle.BG_SECONDARY,
+            activeforeground=NothingPhoneStyle.TEXT_PRIMARY,
+            selectcolor=NothingPhoneStyle.BG_TERTIARY,
+            command=self._toggle
+        )
+        self.toggle_btn.pack(side=tk.RIGHT)
+        
+        # Separator
+        sep = tk.Frame(self, height=1, bg=NothingPhoneStyle.BORDER_COLOR)
+        sep.pack(fill=tk.X, padx=10, pady=(0, 5))
+        
+        # Content frame (can be hidden)
+        self.content_frame = tk.Frame(self, bg=NothingPhoneStyle.BG_SECONDARY)
+        self.content_frame.pack(fill=tk.X, padx=10, pady=(0, 5))
+        
+        # Canvas for Channel A
+        self.canvas_a = tk.Canvas(self.content_frame, height=self.CHANNEL_HEIGHT,
+                                  bg=NothingPhoneStyle.BG_TERTIARY,
+                                  highlightthickness=0)
+        self.canvas_a.pack(fill=tk.X, pady=(0, 4))
+        
+        # Canvas for Channel B
+        self.canvas_b = tk.Canvas(self.content_frame, height=self.CHANNEL_HEIGHT,
+                                  bg=NothingPhoneStyle.BG_TERTIARY,
+                                  highlightthickness=0)
+        self.canvas_b.pack(fill=tk.X, pady=(0, 4))
+        
+        # Legend
+        legend = tk.Frame(self.content_frame, bg=NothingPhoneStyle.BG_SECONDARY)
+        legend.pack(fill=tk.X, pady=(2, 5))
+        
+        # Legend items
+        for color, label_text in [
+            (self.COLOR_BASE, "Base"),
+            (self.COLOR_BOOST, "Boost"),
+            (self.COLOR_LIMIT_LINE, "Limit"),
+            (self.COLOR_WARNING, "Warning"),
+        ]:
+            item = tk.Frame(legend, bg=NothingPhoneStyle.BG_SECONDARY)
+            item.pack(side=tk.LEFT, padx=(0, 12))
+            
+            swatch = tk.Canvas(item, width=10, height=10,
+                               bg=NothingPhoneStyle.BG_SECONDARY,
+                               highlightthickness=0)
+            swatch.pack(side=tk.LEFT, padx=(0, 4))
+            swatch.create_rectangle(1, 1, 9, 9, fill=color, outline="")
+            
+            lbl = tk.Label(item, text=label_text,
+                           font=self.fonts['small'],
+                           bg=NothingPhoneStyle.BG_SECONDARY,
+                           fg=NothingPhoneStyle.TEXT_MUTED)
+            lbl.pack(side=tk.LEFT)
+    
+    def _toggle(self):
+        if self.enabled.get():
+            self.content_frame.pack(fill=tk.X, padx=10, pady=(0, 5))
+            self.toggle_btn.configure(text="ON")
+        else:
+            self.content_frame.pack_forget()
+            self.toggle_btn.configure(text="OFF")
+    
+    def _draw_channel(self, canvas, channel, data):
+        """Draw a single channel's power visualization"""
+        canvas.delete("all")
+        w = canvas.winfo_width()
+        if w <= 1:
+            w = 400  # fallback before first layout
+        
+        pad_x = 8
+        bar_area_width = w - 2 * pad_x
+        max_hw_power = 200  # Hardware maximum
+        
+        # Extract data
+        pattern = data.get('pattern', 'PROXIMITY')
+        device_limit = data.get('device_limit', 0)
+        random_boost = data.get('random_boost', 0)
+        effective_limit = data.get('effective_limit', 0)
+        base_power = data.get('base_power', 0)
+        boost_power = data.get('boost_power', 0)
+        final_power = data.get('final_power', 0)
+        warning = data.get('warning', False)
+        current_strength = data.get('current_strength', 0)
+        raw_strength = data.get('raw_strength', 0)
+        
+        # === Row 1: Channel label + pattern + values ===
+        row1_y = 10
+        
+        # Channel name
+        canvas.create_text(pad_x, row1_y, anchor='w',
+                           text=f"CH-{channel}",
+                           font=self.fonts['heading'],
+                           fill=NothingPhoneStyle.TEXT_PRIMARY)
+        
+        # Pattern name
+        canvas.create_text(pad_x + 55, row1_y, anchor='w',
+                           text=f"[{pattern}]",
+                           font=self.fonts['small'],
+                           fill=NothingPhoneStyle.TEXT_SECONDARY)
+        
+        # Power value (right-aligned)
+        if warning:
+            val_text = f"⚡ {final_power}/{device_limit} (+{int(random_boost)})"
+            val_color = self.COLOR_WARNING
+        else:
+            if int(random_boost) > 0:
+                val_text = f"{final_power}/{device_limit} (+{int(random_boost)})"
+                val_color = self.COLOR_BOOST
+            else:
+                val_text = f"{final_power}/{device_limit}"
+                val_color = NothingPhoneStyle.TEXT_SECONDARY
+        
+        canvas.create_text(w - pad_x, row1_y, anchor='e',
+                           text=val_text,
+                           font=self.fonts['small'],
+                           fill=val_color)
+        
+        # === Row 2: Power bar ===
+        bar_y = 24
+        
+        # Bar background
+        canvas.create_rectangle(pad_x, bar_y, pad_x + bar_area_width, bar_y + self.BAR_HEIGHT,
+                                fill=self.COLOR_BAR_BG, outline="")
+        
+        # Base power bar (green)
+        if base_power > 0:
+            base_w = max(1, (base_power / max_hw_power) * bar_area_width)
+            canvas.create_rectangle(pad_x, bar_y, pad_x + base_w, bar_y + self.BAR_HEIGHT,
+                                    fill=self.COLOR_BASE, outline="")
+        
+        # Boost power bar (orange, stacked after base)
+        if boost_power > 0:
+            base_w = (base_power / max_hw_power) * bar_area_width
+            boost_w = max(1, (boost_power / max_hw_power) * bar_area_width)
+            canvas.create_rectangle(pad_x + base_w, bar_y,
+                                    pad_x + base_w + boost_w, bar_y + self.BAR_HEIGHT,
+                                    fill=self.COLOR_BOOST, outline="")
+        
+        # Device limit marker line (red vertical line)
+        if device_limit > 0:
+            limit_x = pad_x + (device_limit / max_hw_power) * bar_area_width
+            canvas.create_line(limit_x, bar_y - 2, limit_x, bar_y + self.BAR_HEIGHT + 2,
+                               fill=self.COLOR_LIMIT_LINE, width=2)
+        
+        # Warning flash - draw red border around bar when exceeding
+        if warning:
+            canvas.create_rectangle(pad_x - 1, bar_y - 1,
+                                    pad_x + bar_area_width + 1, bar_y + self.BAR_HEIGHT + 1,
+                                    fill="", outline=self.COLOR_WARNING, width=1)
+        
+        # === Row 3: Component breakdown ===
+        row3_y = bar_y + self.BAR_HEIGHT + 12
+        
+        canvas.create_text(pad_x, row3_y, anchor='w',
+                           text=f"Base: {base_power}",
+                           font=self.fonts['small'],
+                           fill=self.COLOR_BASE)
+        
+        canvas.create_text(pad_x + 75, row3_y, anchor='w',
+                           text=f"Boost: +{int(random_boost)}",
+                           font=self.fonts['small'],
+                           fill=self.COLOR_BOOST if random_boost > 0 else NothingPhoneStyle.TEXT_MUTED)
+        
+        canvas.create_text(pad_x + 165, row3_y, anchor='w',
+                           text=f"Limit: {device_limit}",
+                           font=self.fonts['small'],
+                           fill=self.COLOR_LIMIT_LINE)
+        
+        # Raw input strength indicator
+        raw_pct = int(raw_strength * 100)
+        canvas.create_text(pad_x + 245, row3_y, anchor='w',
+                           text=f"Input: {raw_pct}%",
+                           font=self.fonts['small'],
+                           fill=NothingPhoneStyle.TEXT_MUTED)
+        
+        if warning:
+            canvas.create_text(w - pad_x, row3_y, anchor='e',
+                               text="⚠ OVER LIMIT",
+                               font=self.fonts['small'],
+                               fill=self.COLOR_WARNING)
+    
+    def _schedule_update(self):
+        """Schedule periodic visualizer update"""
+        self._update()
+        self._after_id = self.after(self.update_interval, self._schedule_update)
+    
+    def _update(self):
+        """Update visualizer from shared data"""
+        if not self.enabled.get():
+            return
+        try:
+            from srv.handler.shock_handler import POWER_VISUALIZER_DATA
+            data_a = POWER_VISUALIZER_DATA.get('A', {})
+            data_b = POWER_VISUALIZER_DATA.get('B', {})
+            self._draw_channel(self.canvas_a, 'A', data_a)
+            self._draw_channel(self.canvas_b, 'B', data_b)
+        except ImportError:
+            pass  # Server not started yet
+    
+    def destroy(self):
+        """Clean up scheduled updates"""
+        if self._after_id:
+            self.after_cancel(self._after_id)
+        super().destroy()
 
 
 class PatternPanel(tk.Frame):
@@ -1160,7 +1770,13 @@ class PatternPanel(tk.Frame):
             'sensitivity': 100, 
             'threshold': 10,
             'impact_boost_min': 0,
-            'impact_boost_max': 30
+            'impact_boost_max': 30,
+            'boost_cooldown': 5,
+            'boost_decay': 20,
+            'boost_threshold': 15,
+            'velocity_range': 50,
+            'accel_range': 500,
+            'wave_freq': 10,
         }
         return self.settings_basic.get('dglab3', {}).get(channel_key, {}).get(setting_name, defaults.get(setting_name, 100))
     
@@ -1195,6 +1811,12 @@ class PatternPanel(tk.Frame):
             initial_threshold=self._get_initial_setting('A', 'threshold'),
             initial_boost_min=self._get_initial_setting('A', 'impact_boost_min'),
             initial_boost_max=self._get_initial_setting('A', 'impact_boost_max'),
+            initial_boost_cooldown=self._get_initial_setting('A', 'boost_cooldown'),
+            initial_boost_decay=self._get_initial_setting('A', 'boost_decay'),
+            initial_boost_threshold=self._get_initial_setting('A', 'boost_threshold'),
+            initial_velocity_range=self._get_initial_setting('A', 'velocity_range'),
+            initial_accel_range=self._get_initial_setting('A', 'accel_range'),
+            initial_wave_freq=self._get_initial_setting('A', 'wave_freq'),
             callback=self._on_pattern_change,
             settings_callback=self._on_setting_change,
             fonts=self.fonts
@@ -1215,6 +1837,12 @@ class PatternPanel(tk.Frame):
             initial_threshold=self._get_initial_setting('B', 'threshold'),
             initial_boost_min=self._get_initial_setting('B', 'impact_boost_min'),
             initial_boost_max=self._get_initial_setting('B', 'impact_boost_max'),
+            initial_boost_cooldown=self._get_initial_setting('B', 'boost_cooldown'),
+            initial_boost_decay=self._get_initial_setting('B', 'boost_decay'),
+            initial_boost_threshold=self._get_initial_setting('B', 'boost_threshold'),
+            initial_velocity_range=self._get_initial_setting('B', 'velocity_range'),
+            initial_accel_range=self._get_initial_setting('B', 'accel_range'),
+            initial_wave_freq=self._get_initial_setting('B', 'wave_freq'),
             callback=self._on_pattern_change,
             settings_callback=self._on_setting_change,
             fonts=self.fonts
@@ -2144,6 +2772,13 @@ class ShockingVRChatGUI(tk.Tk):
                                     compact=True)
         self.slider_b.pack(fill=tk.X)
         
+        # Power visualizer panel
+        self.power_visualizer = PowerVisualizerPanel(
+            left_column,
+            fonts=self.fonts
+        )
+        self.power_visualizer.pack(fill=tk.X, pady=(10, 0))
+        
         # Pattern selector panel
         self.pattern_panel = PatternPanel(
             left_column,
@@ -2252,6 +2887,12 @@ class ShockingVRChatGUI(tk.Tk):
             self.settings_basic['dglab3'][channel_key]['threshold'] = settings['threshold']
             self.settings_basic['dglab3'][channel_key]['impact_boost_min'] = settings['impact_boost_min']
             self.settings_basic['dglab3'][channel_key]['impact_boost_max'] = settings['impact_boost_max']
+            self.settings_basic['dglab3'][channel_key]['boost_cooldown'] = settings.get('boost_cooldown', 5)
+            self.settings_basic['dglab3'][channel_key]['boost_decay'] = settings.get('boost_decay', 20)
+            self.settings_basic['dglab3'][channel_key]['boost_threshold'] = settings.get('boost_threshold', 15)
+            self.settings_basic['dglab3'][channel_key]['velocity_range'] = settings.get('velocity_range', 50)
+            self.settings_basic['dglab3'][channel_key]['accel_range'] = settings.get('accel_range', 500)
+            self.settings_basic['dglab3'][channel_key]['wave_freq'] = settings.get('wave_freq', 10)
             
             # Update runtime settings for real-time effect
             self._update_runtime_pattern_settings(channel, pattern_name, settings)
@@ -2312,6 +2953,18 @@ class ShockingVRChatGUI(tk.Tk):
                 gui_logger.info(f"Channel {channel} random boost min: +{value}")
             elif setting_name == 'impact_boost_max':
                 gui_logger.info(f"Channel {channel} random boost max: +{value}")
+            elif setting_name == 'boost_cooldown':
+                gui_logger.info(f"Channel {channel} boost cooldown: {value/10:.1f}s")
+            elif setting_name == 'boost_decay':
+                gui_logger.info(f"Channel {channel} boost decay: {value/10:.1f}s")
+            elif setting_name == 'boost_threshold':
+                gui_logger.info(f"Channel {channel} boost trigger: {value}%")
+            elif setting_name == 'velocity_range':
+                gui_logger.info(f"Channel {channel} velocity range: {value/10:.1f}")
+            elif setting_name == 'accel_range':
+                gui_logger.info(f"Channel {channel} accel range: {value/10:.1f}")
+            elif setting_name == 'wave_freq':
+                gui_logger.info(f"Channel {channel} wave freq: {value}ms")
             
         except Exception as e:
             gui_logger.error(f"Error updating setting: {e}")
@@ -2329,6 +2982,12 @@ class ShockingVRChatGUI(tk.Tk):
                 'threshold': settings['threshold'],
                 'impact_boost_min': settings.get('impact_boost_min', 0),
                 'impact_boost_max': settings.get('impact_boost_max', 30),
+                'boost_cooldown': settings.get('boost_cooldown', 5),
+                'boost_decay': settings.get('boost_decay', 20),
+                'boost_threshold': settings.get('boost_threshold', 15),
+                'velocity_range': settings.get('velocity_range', 50),
+                'accel_range': settings.get('accel_range', 500),
+                'wave_freq': settings.get('wave_freq', 10),
             }
         except ImportError:
             pass  # Server not started yet
@@ -2372,6 +3031,12 @@ class ShockingVRChatGUI(tk.Tk):
         threshold = channel_config.get('threshold', 10)
         impact_boost_min = channel_config.get('impact_boost_min', 0)
         impact_boost_max = channel_config.get('impact_boost_max', 30)
+        boost_cooldown = channel_config.get('boost_cooldown', 5)
+        boost_decay = channel_config.get('boost_decay', 20)
+        boost_threshold = channel_config.get('boost_threshold', 15)
+        velocity_range = channel_config.get('velocity_range', 50)
+        accel_range = channel_config.get('accel_range', 500)
+        wave_freq = channel_config.get('wave_freq', 10)
         
         # Determine pattern from mode and n_derivative
         if mode == 'distance':
@@ -2391,18 +3056,28 @@ class ShockingVRChatGUI(tk.Tk):
             'sensitivity': sensitivity,
             'threshold': threshold,
             'impact_boost_min': impact_boost_min,
-            'impact_boost_max': impact_boost_max
+            'impact_boost_max': impact_boost_max,
+            'boost_cooldown': boost_cooldown,
+            'boost_decay': boost_decay,
+            'boost_threshold': boost_threshold,
+            'velocity_range': velocity_range,
+            'accel_range': accel_range,
+            'wave_freq': wave_freq,
         }
         
         # Update the pattern panel
         if channel == 'A':
             self.pattern_panel.pattern_a.set_pattern(pattern)
             self.pattern_panel.pattern_a.set_settings(device_limit, sensitivity, threshold, 
-                                                       impact_boost_min, impact_boost_max)
+                                                       impact_boost_min, impact_boost_max,
+                                                       boost_cooldown, boost_decay, boost_threshold,
+                                                       velocity_range, accel_range, wave_freq)
         else:
             self.pattern_panel.pattern_b.set_pattern(pattern)
             self.pattern_panel.pattern_b.set_settings(device_limit, sensitivity, threshold,
-                                                       impact_boost_min, impact_boost_max)
+                                                       impact_boost_min, impact_boost_max,
+                                                       boost_cooldown, boost_decay, boost_threshold,
+                                                       velocity_range, accel_range, wave_freq)
         
         # Update runtime settings
         self._update_runtime_pattern_settings(channel, pattern, settings)
@@ -2443,6 +3118,12 @@ class ShockingVRChatGUI(tk.Tk):
             threshold = channel_config.get('threshold', 10)
             impact_boost_min = channel_config.get('impact_boost_min', 0)
             impact_boost_max = channel_config.get('impact_boost_max', 30)
+            boost_cooldown = channel_config.get('boost_cooldown', 5)
+            boost_decay = channel_config.get('boost_decay', 20)
+            boost_threshold = channel_config.get('boost_threshold', 15)
+            velocity_range = channel_config.get('velocity_range', 50)
+            accel_range = channel_config.get('accel_range', 500)
+            wave_freq = channel_config.get('wave_freq', 10)
             
             # Determine pattern
             if mode == 'distance':
@@ -2462,7 +3143,13 @@ class ShockingVRChatGUI(tk.Tk):
                 'sensitivity': sensitivity,
                 'threshold': threshold,
                 'impact_boost_min': impact_boost_min,
-                'impact_boost_max': impact_boost_max
+                'impact_boost_max': impact_boost_max,
+                'boost_cooldown': boost_cooldown,
+                'boost_decay': boost_decay,
+                'boost_threshold': boost_threshold,
+                'velocity_range': velocity_range,
+                'accel_range': accel_range,
+                'wave_freq': wave_freq,
             }
             self._update_runtime_pattern_settings(channel, pattern, settings)
     
