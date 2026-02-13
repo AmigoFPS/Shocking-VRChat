@@ -89,6 +89,85 @@ Ensure your avatar has the appropriate Contact Receivers or parameters. The app 
 - `/avatar/parameters/TouchAreaD`
 - `/avatar/parameters/lms-penis-proximityA*`
 
+## GUI Controls Reference
+
+This section details every button and slider available in the interface.
+
+### Power Monitor
+- **POWER MONITOR Toggle (ON/OFF):** Enables or disables the real-time power visualization graph.
+  - **Base (Green):** Shows the power output calculated from your movement or proximity.
+  - **Boost (Orange):** Shows the *additional* power added by the random boost system.
+  - **Limit (Red Line):** Visualizes the current safety limit.
+  - *Note: If a boost occurs, the limit line may temporarily rise above your set slider value. This is intentional behavior to allow impacts to feel stronger.*
+
+### Channel Controls (A & B)
+Each channel has its own limit slider and control buttons.
+- **CHANNEL LIMIT Slider:** The main safety limit.
+  - **Result:** The shock intensity will scale between 0 and this value based on your in-game actions.
+  - **Example:** If set to 50, even maximum in-game interaction will only result in 50% power (unless a random boost is active).
+- **◀ / ▶ Buttons:** Fine-tune the limit by ±1.
+- **-10 / -5 / +5 / +10:** Quickly adjust the limit by fixed amounts.
+- **RESET:** Instantly resets the limit to the default safe value (100).
+- **⚡ TEST SHOCK:** Sends a short pulse at the current limit level to verify the device is working.
+
+### Global Power Settings
+These settings define how the app translates your VRChat avatar parameters into shock intensity.
+
+- **Device Limit (Slider 0-200):** The global "ceiling" for power output.
+  - **Result:** Acts as a hard cap for the base power.
+  - *Important:* Random boosts *add* to this limit, allowing for dynamic "critical hits" that feel distinct from normal operation.
+
+- **Sensitivity (Slider 0-200%):** A multiplier for the input signal.
+  - **Result:**
+    - **100%:** Linear response (0.5 input = 50% power).
+    - **200%:** High sensitivity. You reach maximum power with only half the movement/distance. Good for subtle interactions.
+    - **50%:** Low sensitivity. You must interact fully/violently to reach meaningful power levels.
+
+- **Threshold (Slider 0-100%):** The minimum input level required to feel anything.
+  - **Result:** Acts as a "noise gate". Signals below this level are ignored (0 power).
+  - **Example:** Set to 10% to prevent the collar from buzzing due to tiny tracking jitters or idle animations.
+
+### Random Boost Settings
+This system simulates "impact" physics by adding extra power when sudden changes are detected.
+
+- **Min (Slider 0-100):** The *lowest possible* random bonus added on impact.
+- **Max (Slider 0-100):** The *highest possible* random bonus added on impact.
+  - **Result:** When an impact triggers, the app picks a random number between Min and Max and adds it to your power limit.
+  - **Example:** Min=10, Max=30. An impact might add +22 to your power for a split second, making that specific hit feel stronger than others.
+
+### Advanced Settings (Hidden by default)
+Click **▸ ADVANCED** to reveal fine-tuning controls.
+
+**Boost Tuning (How boosts behave):**
+- **Cooldown (0.1s - 3.0s):** The "refractory period" after a boost.
+  - **Result:** Prevents the system from spamming boosts during a single continuous motion. Higher values = boosts happen less often (e.g., only on the first hit of a combo).
+- **Decay (0.5s - 10.0s):** How long the extra boost power lasts.
+  - **Result:**
+    - **Short (0.5s):** A sharp "snap" that disappears instantly.
+    - **Long (5.0s):** The hit leaves a lingering "sting" that keeps power elevated for a few seconds.
+- **Trigger (1% - 100%):** Sensitivity to changes.
+  - **Result:** Checks how *fast* the signal increases. Lower values mean even gentle taps can trigger a boost. Higher values require a violent spike in signal to trigger.
+
+**Pattern Settings (Physics normalization):**
+- **Vel Range (IMPACT Mode):** Reference speed for 100% power.
+  - **Result:**
+    - **Low (e.g. 10):** Very sensitive. Slow hand movements will max out the power.
+    - **High (e.g. 100):** You must punch/thrust extremely fast to reach full power.
+- **Acc Range (RECOIL Mode):** Reference stopping force for 100% power.
+  - **Result:** Similar to velocity, but measures how *quickly* you stop. Lower values make it easier to trigger power with soft stops.
+- **Wave Freq (1ms - 100ms):** The update rate of the shock signal.
+  - **Result:**
+    - **10ms:** Very smooth, "analog" feeling changes in intensity. High network usage.
+    - **100ms:** "Stepped" or "pulsing" feel. Lower network usage.
+
+### System & Logs
+- **BASIC / ADVANCED Buttons:** Switch between editing the basic (`settings.yaml`) or advanced (`settings-advanced.yaml`) configuration files.
+- **Reload (↻):** Reloads the settings from the currently selected configuration file without restarting the app.
+- **SAVE (💾):** Saves the current text in the editor to the selected configuration file.
+- **Copy (📋):** Copies the current system logs to the clipboard.
+- **CLEAR:** Clears the current log display window.
+- **AUTO↓:** Toggles auto-scrolling of the log window. When unchecked, the view will stay in place even as new logs arrive.
+
 ## Configuration
 
 The application uses two configuration files:
