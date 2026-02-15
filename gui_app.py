@@ -19,6 +19,10 @@ import webbrowser
 from datetime import datetime
 import queue
 import asyncio
+import json
+import base64
+import struct
+import copy
 
 # Constants
 CONFIG_FILE_VERSION = 'v0.2'
@@ -52,7 +56,7 @@ SETTINGS_BASIC_DEFAULT = {
             # Pattern-specific (advanced)
             'velocity_range': 50,     # IMPACT velocity normalization (x0.1 = 5.0)
             'accel_range': 500,       # RECOIL accel normalization (x0.1 = 50.0)
-            'wave_freq': 10,          # Wave frequency in ms (1-100)
+            'wave_freq': 10,          # Wave frequency in ms (10-100)
         },
         'channel_b': {
             'avatar_params': [
@@ -78,7 +82,7 @@ SETTINGS_BASIC_DEFAULT = {
             # Pattern-specific (advanced)
             'velocity_range': 50,     # IMPACT velocity normalization (x0.1 = 5.0)
             'accel_range': 500,       # RECOIL accel normalization (x0.1 = 50.0)
-            'wave_freq': 10,          # Wave frequency in ms (1-100)
+            'wave_freq': 10,          # Wave frequency in ms (10-100)
         }
     },
     'version': CONFIG_FILE_VERSION,
@@ -1288,7 +1292,7 @@ class PatternSelector(tk.Frame):
         
         self.wavefreq_slider = tk.Scale(
             self.wavefreq_frame,
-            from_=1, to=100,
+            from_=10, to=100,
             orient=tk.HORIZONTAL,
             variable=self.wave_freq,
             font=self.fonts['small'],
@@ -2513,6 +2517,353 @@ class ServerManager:
             asyncio.run_coroutine_threadsafe(do_wakeup(), self.loop)
 
 
+# ─── Settings Code (Export / Import) & Presets ───────────────────────
+
+PRESETS_FILENAME = 'presets.yaml'
+
+# Keys that are serialised into a share-code (fixed order!)
+_SHARE_KEYS = [
+    'mode', 'n_derivative', 'device_limit', 'sensitivity', 'threshold',
+    'impact_boost_min', 'impact_boost_max', 'boost_cooldown', 'boost_decay',
+    'boost_threshold', 'velocity_range', 'accel_range', 'wave_freq',
+    'strength_limit',
+]
+
+# Binary pack format per channel:
+#   mode(B) n_der(B) dev_lim(B) sens(B) thresh(B) bst_min(B) bst_max(B)
+#   bst_cd(B) bst_dec(B) bst_thr(B) vel_rng(H) acc_rng(H) wave(B) str_lim(B)
+_CH_STRUCT = struct.Struct('<10B2H2B')   # 10 B + 2 H + 2 B = 14 values, 16 bytes
+_CODE_VERSION = 1
+_MODE_MAP = {'distance': 0, 'touch': 1}
+_MODE_RMAP = {0: 'distance', 1: 'touch'}
+
+
+class SettingsCodec:
+    """Encode / decode channel settings into a very short share-code (~25 chars)."""
+
+    @staticmethod
+    def _collect(settings_basic):
+        """Return a lightweight dict with only shareable keys."""
+        data = {}
+        for ch in ('channel_a', 'channel_b'):
+            ch_cfg = settings_basic.get('dglab3', {}).get(ch, {})
+            data[ch] = {k: ch_cfg.get(k) for k in _SHARE_KEYS if k in ch_cfg}
+        return data
+
+    @staticmethod
+    def _pack_channel(d):
+        mode_i = _MODE_MAP.get(d.get('mode', 'distance'), 0)
+        return _CH_STRUCT.pack(
+            mode_i,
+            int(d.get('n_derivative', 0)),
+            int(d.get('device_limit', 100)),
+            int(d.get('sensitivity', 100)),
+            int(d.get('threshold', 10)),
+            int(d.get('impact_boost_min', 0)),
+            int(d.get('impact_boost_max', 30)),
+            int(d.get('boost_cooldown', 5)),
+            int(d.get('boost_decay', 20)),
+            int(d.get('boost_threshold', 15)),
+            int(d.get('velocity_range', 50)),  # H
+            int(d.get('accel_range', 500)),     # H
+            int(d.get('wave_freq', 10)),
+            int(d.get('strength_limit', 100)),
+        )
+
+    @staticmethod
+    def _unpack_channel(buf):
+        vals = _CH_STRUCT.unpack(buf)
+        return {
+            'mode': _MODE_RMAP.get(vals[0], 'distance'),
+            'n_derivative': vals[1],
+            'device_limit': vals[2],
+            'sensitivity': vals[3],
+            'threshold': vals[4],
+            'impact_boost_min': vals[5],
+            'impact_boost_max': vals[6],
+            'boost_cooldown': vals[7],
+            'boost_decay': vals[8],
+            'boost_threshold': vals[9],
+            'velocity_range': vals[10],
+            'accel_range': vals[11],
+            'wave_freq': vals[12],
+            'strength_limit': vals[13],
+        }
+
+    @staticmethod
+    def encode(settings_basic) -> str:
+        """settings_basic → short base64 string (~25 chars)."""
+        payload = SettingsCodec._collect(settings_basic)
+        buf = bytes([_CODE_VERSION])
+        buf += SettingsCodec._pack_channel(payload.get('channel_a', {}))
+        buf += SettingsCodec._pack_channel(payload.get('channel_b', {}))
+        return base64.urlsafe_b64encode(buf).decode('ascii').rstrip('=')
+
+    @staticmethod
+    def decode(code: str) -> dict:
+        """short base64 string → dict {channel_a: {…}, channel_b: {…}}"""
+        # Restore padding
+        padded = code.strip()
+        padded += '=' * (-len(padded) % 4)
+        buf = base64.urlsafe_b64decode(padded)
+        ver = buf[0]
+        if ver != _CODE_VERSION:
+            raise ValueError(f"Unknown code version {ver}")
+        sz = _CH_STRUCT.size
+        ch_a = SettingsCodec._unpack_channel(buf[1:1+sz])
+        ch_b = SettingsCodec._unpack_channel(buf[1+sz:1+2*sz])
+        return {'channel_a': ch_a, 'channel_b': ch_b}
+
+
+class PresetsManager:
+    """Load / save named presets to a YAML file."""
+
+    def __init__(self, path=PRESETS_FILENAME):
+        self.path = path
+        self.presets = {}  # name → {channel_a: …, channel_b: …}
+        self.load()
+
+    def load(self):
+        if os.path.exists(self.path):
+            try:
+                with open(self.path, 'r', encoding='utf-8') as f:
+                    data = yaml.safe_load(f) or {}
+                self.presets = data if isinstance(data, dict) else {}
+            except Exception:
+                self.presets = {}
+
+    def save(self):
+        with open(self.path, 'w', encoding='utf-8') as f:
+            yaml.safe_dump(self.presets, f, allow_unicode=True, default_flow_style=False)
+
+    def names(self):
+        return list(self.presets.keys())
+
+    def add(self, name, settings_basic):
+        self.presets[name] = SettingsCodec._collect(settings_basic)
+        self.save()
+
+    def get(self, name):
+        return self.presets.get(name)
+
+    def delete(self, name):
+        self.presets.pop(name, None)
+        self.save()
+
+
+class PresetsPanel(tk.Frame):
+    """Inline panel: share-code field + preset quick-swap buttons."""
+
+    def __init__(self, parent, presets_manager, on_load_preset, on_save_preset,
+                 on_delete_preset, on_export, on_import, fonts=None):
+        super().__init__(parent, bg=NothingPhoneStyle.BG_SECONDARY)
+        self.pm = presets_manager
+        self.on_load_preset = on_load_preset
+        self.on_save_preset = on_save_preset
+        self.on_delete_preset = on_delete_preset
+        self.on_export = on_export      # callable() → str (returns code)
+        self.on_import = on_import      # callable(code_str)
+        self.fonts = fonts or NothingPhoneStyle.get_scaled_fonts()
+        self._create_widgets()
+
+    def _create_widgets(self):
+        # ── Header ──
+        header = tk.Frame(self, bg=NothingPhoneStyle.BG_SECONDARY)
+        header.pack(fill=tk.X, padx=10, pady=(10, 5))
+
+        dot = tk.Canvas(header, width=10, height=10,
+                        bg=NothingPhoneStyle.BG_SECONDARY, highlightthickness=0)
+        dot.pack(side=tk.LEFT, padx=(0, 8))
+        dot.create_oval(2, 2, 8, 8, fill=NothingPhoneStyle.ACCENT_RED, outline="")
+
+        tk.Label(header, text="PRESETS & SHARE",
+                 font=self.fonts['heading'],
+                 bg=NothingPhoneStyle.BG_SECONDARY,
+                 fg=NothingPhoneStyle.TEXT_PRIMARY).pack(side=tk.LEFT)
+
+        tk.Frame(self, height=1, bg=NothingPhoneStyle.BORDER_COLOR).pack(fill=tk.X, padx=10, pady=5)
+
+        # ── Share-code: entry + paste ──
+        entry_row = tk.Frame(self, bg=NothingPhoneStyle.BG_SECONDARY)
+        entry_row.pack(fill=tk.X, padx=10, pady=(0, 4))
+
+        tk.Label(entry_row, text="Code:", font=self.fonts['small'],
+                 bg=NothingPhoneStyle.BG_SECONDARY,
+                 fg=NothingPhoneStyle.TEXT_SECONDARY).pack(side=tk.LEFT, padx=(0, 4))
+
+        self.code_entry = tk.Entry(entry_row, font=self.fonts['mono'],
+                                   bg=NothingPhoneStyle.BG_TERTIARY,
+                                   fg=NothingPhoneStyle.TEXT_PRIMARY,
+                                   insertbackground=NothingPhoneStyle.ACCENT_RED,
+                                   selectbackground=NothingPhoneStyle.ACCENT_RED,
+                                   selectforeground=NothingPhoneStyle.TEXT_PRIMARY,
+                                   bd=0, relief=tk.FLAT)
+        self.code_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=2, padx=(0, 3))
+
+        tk.Button(entry_row, text="📋 PASTE", font=self.fonts['small'],
+                  bg=NothingPhoneStyle.BG_TERTIARY,
+                  fg=NothingPhoneStyle.TEXT_SECONDARY,
+                  activebackground=NothingPhoneStyle.ACCENT_RED,
+                  bd=0, width=8, cursor="hand2",
+                  command=self._paste_code).pack(side=tk.RIGHT)
+
+        # ── Action buttons row ──
+        actions_row = tk.Frame(self, bg=NothingPhoneStyle.BG_SECONDARY)
+        actions_row.pack(fill=tk.X, padx=10, pady=(0, 3))
+
+        tk.Button(actions_row, text="⬆ EXPORT", font=self.fonts['small'],
+                  bg=NothingPhoneStyle.BG_TERTIARY,
+                  fg=NothingPhoneStyle.TEXT_SECONDARY,
+                  activebackground=NothingPhoneStyle.ACCENT_RED,
+                  bd=0, cursor="hand2",
+                  command=self._do_export).pack(side=tk.LEFT, padx=(0, 3))
+
+        tk.Button(actions_row, text="📋 COPY", font=self.fonts['small'],
+                  bg=NothingPhoneStyle.BG_TERTIARY,
+                  fg=NothingPhoneStyle.TEXT_SECONDARY,
+                  activebackground=NothingPhoneStyle.ACCENT_RED,
+                  bd=0, cursor="hand2",
+                  command=self._copy_code).pack(side=tk.LEFT, padx=(0, 3))
+
+        tk.Button(actions_row, text="⬇ IMPORT", font=self.fonts['small'],
+                  bg=NothingPhoneStyle.ACCENT_RED,
+                  fg=NothingPhoneStyle.TEXT_PRIMARY,
+                  activebackground=NothingPhoneStyle.ACCENT_ORANGE,
+                  bd=0, cursor="hand2",
+                  command=self._do_import).pack(side=tk.LEFT)
+
+        # Status label (shows feedback)
+        self.status_label = tk.Label(self, text="", font=self.fonts['small'],
+                                     bg=NothingPhoneStyle.BG_SECONDARY,
+                                     fg=NothingPhoneStyle.TEXT_MUTED, anchor=tk.W)
+        self.status_label.pack(fill=tk.X, padx=14, pady=(1, 3))
+
+        tk.Frame(self, height=1, bg=NothingPhoneStyle.BORDER_COLOR).pack(fill=tk.X, padx=10, pady=3)
+
+        # ── Preset save row ──
+        save_row = tk.Frame(self, bg=NothingPhoneStyle.BG_SECONDARY)
+        save_row.pack(fill=tk.X, padx=10, pady=(2, 4))
+
+        tk.Label(save_row, text="Name:", font=self.fonts['small'],
+                 bg=NothingPhoneStyle.BG_SECONDARY,
+                 fg=NothingPhoneStyle.TEXT_SECONDARY).pack(side=tk.LEFT, padx=(0, 4))
+
+        self.name_entry = tk.Entry(save_row, font=self.fonts['small'],
+                                   bg=NothingPhoneStyle.BG_TERTIARY,
+                                   fg=NothingPhoneStyle.TEXT_PRIMARY,
+                                   insertbackground=NothingPhoneStyle.ACCENT_RED,
+                                   bd=0, width=16)
+        self.name_entry.pack(side=tk.LEFT, padx=(0, 4))
+        self.name_entry.bind('<Return>', lambda e: self._save_preset())
+
+        tk.Button(save_row, text="💾 SAVE", font=self.fonts['small'],
+                  bg=NothingPhoneStyle.ACCENT_RED,
+                  fg=NothingPhoneStyle.TEXT_PRIMARY,
+                  activebackground=NothingPhoneStyle.ACCENT_ORANGE,
+                  bd=0, width=8, cursor="hand2",
+                  command=self._save_preset).pack(side=tk.LEFT)
+
+        # ── Preset buttons ──
+        self.buttons_frame = tk.Frame(self, bg=NothingPhoneStyle.BG_SECONDARY)
+        self.buttons_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
+        self.refresh_buttons()
+
+    # ── Share-code actions ──
+    def _do_export(self):
+        try:
+            code = self.on_export()
+            self.code_entry.delete(0, tk.END)
+            self.code_entry.insert(0, code)
+            self.code_entry.select_range(0, tk.END)
+            self._flash_status("✓ Code generated — copy & share!", NothingPhoneStyle.LOG_SUCCESS)
+        except Exception as e:
+            self._flash_status(f"Export error: {e}", NothingPhoneStyle.ACCENT_RED)
+
+    def _copy_code(self):
+        code = self.code_entry.get().strip()
+        if not code:
+            self._flash_status("Generate a code first (EXPORT)", NothingPhoneStyle.ACCENT_RED)
+            return
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(code)
+            self._flash_status("✓ Copied!", NothingPhoneStyle.LOG_SUCCESS)
+        except Exception as e:
+            self._flash_status(f"Copy error: {e}", NothingPhoneStyle.ACCENT_RED)
+
+    def _paste_code(self):
+        try:
+            clip = self.clipboard_get()
+            self.code_entry.delete(0, tk.END)
+            self.code_entry.insert(0, clip.strip())
+            self._flash_status("Pasted — press IMPORT to apply", NothingPhoneStyle.TEXT_SECONDARY)
+        except tk.TclError:
+            self._flash_status("Clipboard is empty", NothingPhoneStyle.ACCENT_RED)
+
+    def _do_import(self):
+        code = self.code_entry.get().strip()
+        if not code:
+            self._flash_status("Paste a code first", NothingPhoneStyle.ACCENT_RED)
+            return
+        try:
+            self.on_import(code)
+            self._flash_status("✓ Settings imported!", NothingPhoneStyle.LOG_SUCCESS)
+        except Exception as e:
+            self._flash_status(f"Invalid code: {e}", NothingPhoneStyle.ACCENT_RED)
+
+    def _flash_status(self, text, color):
+        self.status_label.configure(text=text, fg=color)
+        # Auto-clear after 4 seconds
+        self.after(4000, lambda: self.status_label.configure(text=""))
+
+    # ── Preset actions ──
+    def _save_preset(self):
+        name = self.name_entry.get().strip()
+        if not name:
+            return
+        self.on_save_preset(name)
+        self.name_entry.delete(0, tk.END)
+        self.refresh_buttons()
+
+    def refresh_buttons(self):
+        for w in self.buttons_frame.winfo_children():
+            w.destroy()
+
+        names = self.pm.names()
+        if not names:
+            tk.Label(self.buttons_frame, text="No presets saved yet",
+                     font=self.fonts['small'],
+                     bg=NothingPhoneStyle.BG_SECONDARY,
+                     fg=NothingPhoneStyle.TEXT_MUTED).pack(anchor=tk.W, pady=2)
+            return
+
+        for name in names:
+            row = tk.Frame(self.buttons_frame, bg=NothingPhoneStyle.BG_SECONDARY)
+            row.pack(fill=tk.X, pady=1)
+
+            tk.Button(row, text=f" ▸ {name}", font=self.fonts['small'],
+                      bg=NothingPhoneStyle.BG_TERTIARY,
+                      fg=NothingPhoneStyle.TEXT_PRIMARY,
+                      activebackground=NothingPhoneStyle.ACCENT_RED,
+                      bd=0, anchor=tk.W, cursor="hand2",
+                      command=lambda n=name: self._load(n)).pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+            tk.Button(row, text="✕", font=self.fonts['small'],
+                      bg=NothingPhoneStyle.BG_TERTIARY,
+                      fg=NothingPhoneStyle.ACCENT_RED,
+                      activebackground=NothingPhoneStyle.ACCENT_RED,
+                      activeforeground=NothingPhoneStyle.TEXT_PRIMARY,
+                      bd=0, width=3, cursor="hand2",
+                      command=lambda n=name: self._delete(n)).pack(side=tk.RIGHT, padx=(2, 0))
+
+    def _load(self, name):
+        self.on_load_preset(name)
+
+    def _delete(self, name):
+        self.on_delete_preset(name)
+        self.refresh_buttons()
+
+
 class ShockingVRChatGUI(tk.Tk):
     """Main application window - Full replacement for CMD app"""
     
@@ -2536,6 +2887,9 @@ class ShockingVRChatGUI(tk.Tk):
         # Server info
         self.server_ip = self._get_local_ip()
         self.qr_url = ""
+        
+        # Presets manager
+        self.presets_manager = PresetsManager()
         
         # Server manager
         self.server_manager = None
@@ -2788,6 +3142,19 @@ class ShockingVRChatGUI(tk.Tk):
             fonts=self.fonts
         )
         self.pattern_panel.pack(fill=tk.X, pady=(10, 0))
+        
+        # Presets & Share panel
+        self.presets_panel = PresetsPanel(
+            left_column,
+            presets_manager=self.presets_manager,
+            on_load_preset=self._load_preset,
+            on_save_preset=self._save_preset,
+            on_delete_preset=self._delete_preset,
+            on_export=self._export_code,
+            on_import=self._import_code,
+            fonts=self.fonts
+        )
+        self.presets_panel.pack(fill=tk.X, pady=(10, 0))
         
         # Config editor
         self.config_editor = ConfigEditor(left_column, 
@@ -3082,6 +3449,78 @@ class ShockingVRChatGUI(tk.Tk):
         # Update runtime settings
         self._update_runtime_pattern_settings(channel, pattern, settings)
     
+    # ── Export / Import / Presets ──────────────────────────────────
+    def _export_code(self) -> str:
+        """Return current settings as a compact share-code string."""
+        code = SettingsCodec.encode(self.settings_basic)
+        gui_logger.success("Settings code generated")
+        return code
+
+    def _import_code(self, code_str: str):
+        """Decode a share-code string and apply the settings."""
+        data = SettingsCodec.decode(code_str)
+        self._apply_imported_settings(data)
+
+    def _apply_imported_settings(self, data):
+        """Apply decoded settings dict from a share-code."""
+        try:
+            for ch in ('channel_a', 'channel_b'):
+                if ch not in data:
+                    continue
+                for key, val in data[ch].items():
+                    if key in _SHARE_KEYS and val is not None:
+                        self.settings_basic['dglab3'][ch][key] = val
+
+            # Persist
+            with open(CONFIG_FILENAME_BASIC, 'w', encoding='utf-8') as f:
+                yaml.safe_dump(self.settings_basic, f, allow_unicode=True)
+
+            # Refresh UI
+            self._refresh_ui_from_settings()
+            gui_logger.success("Settings imported successfully")
+        except Exception as e:
+            gui_logger.error(f"Import apply failed: {e}")
+
+    def _save_preset(self, name):
+        """Save current settings as a named preset."""
+        self.presets_manager.add(name, self.settings_basic)
+        gui_logger.success(f"Preset saved: {name}")
+
+    def _load_preset(self, name):
+        """Load a named preset and apply it."""
+        data = self.presets_manager.get(name)
+        if not data:
+            gui_logger.warning(f"Preset not found: {name}")
+            return
+        self._apply_imported_settings(data)
+        gui_logger.success(f"Preset loaded: {name}")
+
+    def _delete_preset(self, name):
+        """Delete a named preset."""
+        self.presets_manager.delete(name)
+        gui_logger.info(f"Preset deleted: {name}")
+
+    def _refresh_ui_from_settings(self):
+        """Sync all UI widgets from self.settings_basic."""
+        try:
+            # Update power sliders
+            dev_a = self.settings_basic['dglab3']['channel_a'].get('device_limit',
+                    self.settings_basic['dglab3']['channel_a'].get('strength_limit', 100))
+            dev_b = self.settings_basic['dglab3']['channel_b'].get('device_limit',
+                    self.settings_basic['dglab3']['channel_b'].get('strength_limit', 100))
+            self.slider_a.set_value(min(200, dev_a))
+            self.slider_b.set_value(min(200, dev_b))
+
+            # Update pattern panels
+            self._update_pattern_from_config('A', self.settings_basic)
+            self._update_pattern_from_config('B', self.settings_basic)
+
+            # Refresh config editor
+            if self.config_editor.current_file == "basic":
+                self.config_editor._reload_config()
+        except Exception as e:
+            gui_logger.error(f"UI refresh error: {e}")
+
     def _start_server(self):
         """Start the integrated server"""
         try:

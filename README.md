@@ -7,6 +7,7 @@ The project features a modern **GUI** inspired by the "Nothing Phone" design lan
 ## Features
 
 - **Modern GUI:** A sleek, "Nothing Phone" style interface (monochrome, dot accents) built with Tkinter.
+- **Presets & Sharing:** Save your favorite tuning configurations and share them instantly with friends using short **Share Codes**.
 - **VRChat Integration:** Listens for standard OSC parameters to trigger actions.
 - **DG-Lab 3 Support:** Native support for the DG-Lab 3 app protocol via WebSocket.
 - **Tuya IoT Support:** Control Tuya-enabled smart devices (e.g., smart plugs, shockers) via Tuya Cloud API.
@@ -71,7 +72,7 @@ python gui_app.py
 - **Advanced Settings:** Click **▸ ADVANCED** to fine-tune:
   - **Boost Tuning:** Cooldowns, decay rates, and trigger thresholds.
   - **Pattern Ranges:** Adjust sensitivity for velocity/acceleration mapping.
-  - **Wave Freq:** Custom update frequency.
+  - **Wave Freq:** Custom update frequency (10ms - 100ms).
 
 ### 4. VRChat Setup
 Ensure your avatar has the appropriate Contact Receivers or parameters. The app listens on **UDP Port 9001**.
@@ -92,6 +93,16 @@ Ensure your avatar has the appropriate Contact Receivers or parameters. The app 
 ## GUI Controls Reference
 
 This section details every button and slider available in the interface.
+
+### Presets & Share Panel
+Located on the left side, this panel allows you to manage configurations.
+- **Code Field:** Paste a shared code here or copy one generated from your settings.
+- **⬆ EXPORT:** Generates a short text code representing your current settings for all channels.
+- **📋 COPY:** Copies the code from the field to your clipboard.
+- **📋 PASTE:** Pastes text from your clipboard into the code field.
+- **⬇ IMPORT:** Applies the settings from the code field to your app.
+- **💾 SAVE PRESET:** Saves your current configuration with the name entered in the "Preset" field.
+- **Preset List:** Quick-access buttons to load saved presets instantly. Click **✕** to delete a preset.
 
 ### Power Monitor
 - **POWER MONITOR Toggle (ON/OFF):** Enables or disables the real-time power visualization graph.
@@ -155,7 +166,7 @@ Click **▸ ADVANCED** to reveal fine-tuning controls.
     - **High (e.g. 100):** You must punch/thrust extremely fast to reach full power.
 - **Acc Range (RECOIL Mode):** Reference stopping force for 100% power.
   - **Result:** Similar to velocity, but measures how *quickly* you stop. Lower values make it easier to trigger power with soft stops.
-- **Wave Freq (1ms - 100ms):** The update rate of the shock signal.
+- **Wave Freq (10ms - 100ms):** The update rate of the shock signal.
   - **Result:**
     - **10ms:** Very smooth, "analog" feeling changes in intensity. High network usage.
     - **100ms:** "Stepped" or "pulsing" feel. Lower network usage.

@@ -2,3 +2,10 @@ __pycache__/
 *.pyc
 build/
 dist/
+venv/
+.env
+.vscode/
+.idea/
+*.log
+presets.yaml
+settings-*.yaml
